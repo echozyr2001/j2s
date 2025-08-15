@@ -91,7 +91,10 @@ impl JsonSchema {
     }
 
     /// Creates a new nested object schema with properties (without $schema field)
-    pub fn new_nested_object(properties: HashMap<String, JsonSchema>, required: Vec<String>) -> Self {
+    pub fn new_nested_object(
+        properties: HashMap<String, JsonSchema>,
+        required: Vec<String>,
+    ) -> Self {
         Self {
             schema: String::new(),
             type_name: SchemaType::Object,
@@ -150,18 +153,82 @@ impl JsonSchema {
 const MAX_RECURSION_DEPTH: usize = 100;
 
 /// Generates a JSON Schema from a JSON value
+///
+/// This function analyzes the structure of the provided JSON value and creates
+/// a corresponding JSON Schema that describes the data structure, types, and constraints.
+///
+/// # Arguments
+/// * `json_value` - The JSON value to analyze and generate a schema for
+///
+/// # Returns
+/// A `JsonSchema` struct representing the schema for the input JSON
+///
+/// # Performance
+/// For large or deeply nested JSON structures, this function includes optimizations:
+/// - Recursion depth limiting to prevent stack overflow
+/// - Efficient type inference and deduplication
+/// - Memory-conscious processing of large arrays and objects
 pub fn generate_schema(json_value: &serde_json::Value) -> JsonSchema {
     generate_schema_with_depth(json_value, 0, true)
 }
 
+/// Generates a JSON Schema with progress indication for large structures
+///
+/// This function provides the same functionality as `generate_schema` but includes
+/// progress callbacks for processing large JSON structures.
+///
+/// # Arguments
+/// * `json_value` - The JSON value to analyze
+/// * `show_progress` - Whether to show progress messages
+///
+/// # Returns
+/// A `JsonSchema` struct representing the schema for the input JSON
+pub fn generate_schema_with_progress(
+    json_value: &serde_json::Value,
+    show_progress: bool,
+) -> JsonSchema {
+    if show_progress {
+        println!("   📊 Progress: 0% - Starting schema generation...");
+    }
+
+    let schema = generate_schema_with_depth_and_progress(json_value, 0, true, show_progress);
+
+    if show_progress {
+        println!("   📊 Progress: 100% - Schema generation complete");
+    }
+
+    schema
+}
+
 /// Internal function that generates a JSON Schema with recursion depth tracking
-fn generate_schema_with_depth(json_value: &serde_json::Value, depth: usize, is_root: bool) -> JsonSchema {
+fn generate_schema_with_depth(
+    json_value: &serde_json::Value,
+    depth: usize,
+    is_root: bool,
+) -> JsonSchema {
+    generate_schema_with_depth_and_progress(json_value, depth, is_root, false)
+}
+
+/// Internal function that generates a JSON Schema with recursion depth tracking and progress indication
+fn generate_schema_with_depth_and_progress(
+    json_value: &serde_json::Value,
+    depth: usize,
+    is_root: bool,
+    show_progress: bool,
+) -> JsonSchema {
     // Check recursion depth to prevent stack overflow
     if depth > MAX_RECURSION_DEPTH {
+        if show_progress {
+            println!(
+                "   📊 Progress: 90% - Maximum recursion depth reached - creating fallback schema"
+            );
+        }
+
         // Return a generic schema when max depth is reached
         if is_root {
-            return JsonSchema::new(SchemaType::Object)
-                .with_description("Schema generation stopped due to maximum recursion depth".to_string());
+            return JsonSchema::new(SchemaType::Object).with_description(
+                "Schema generation stopped due to maximum recursion depth".to_string(),
+            );
         } else {
             return JsonSchema::new_nested(SchemaType::Object);
         }
@@ -169,7 +236,17 @@ fn generate_schema_with_depth(json_value: &serde_json::Value, depth: usize, is_r
 
     match json_value {
         serde_json::Value::Object(obj) => {
-            let processed_schema = process_object_with_depth(obj, depth + 1);
+            if show_progress && depth < 3 {
+                let progress = ((depth as f32 / MAX_RECURSION_DEPTH as f32) * 80.0) as usize;
+                println!(
+                    "   📊 Progress: {}% - Processing object at depth {depth} with {} properties",
+                    progress,
+                    obj.len()
+                );
+            }
+
+            let processed_schema =
+                process_object_with_depth_and_progress(obj, depth + 1, show_progress);
             if is_root {
                 // For root schema, add the $schema field
                 JsonSchema {
@@ -186,7 +263,17 @@ fn generate_schema_with_depth(json_value: &serde_json::Value, depth: usize, is_r
             }
         }
         serde_json::Value::Array(arr) => {
-            let processed_schema = process_array_with_depth(arr, depth + 1);
+            if show_progress && depth < 3 {
+                let progress = ((depth as f32 / MAX_RECURSION_DEPTH as f32) * 80.0) as usize;
+                println!(
+                    "   📊 Progress: {}% - Processing array at depth {depth} with {} elements",
+                    progress,
+                    arr.len()
+                );
+            }
+
+            let processed_schema =
+                process_array_with_depth_and_progress(arr, depth + 1, show_progress);
             if is_root {
                 // For root schema, add the $schema field
                 JsonSchema {
@@ -233,20 +320,37 @@ fn infer_type(value: &serde_json::Value) -> SchemaType {
     }
 }
 
-/// Processes a JSON object and generates its schema
+/// Processes a JSON object and generates its schema (for testing)
+#[cfg(test)]
 fn process_object(obj: &serde_json::Map<String, serde_json::Value>) -> JsonSchema {
-    process_object_with_depth(obj, 0)
+    process_object_with_depth_and_progress(obj, 0, false)
 }
 
-/// Processes a JSON object and generates its schema with depth tracking
-fn process_object_with_depth(obj: &serde_json::Map<String, serde_json::Value>, depth: usize) -> JsonSchema {
+/// Processes a JSON object and generates its schema with depth tracking and progress indication
+fn process_object_with_depth_and_progress(
+    obj: &serde_json::Map<String, serde_json::Value>,
+    depth: usize,
+    show_progress: bool,
+) -> JsonSchema {
     let mut properties = HashMap::new();
     let mut required = Vec::new();
+    let total_props = obj.len();
 
     // Process each property in the object
-    for (key, value) in obj {
+    for (index, (key, value)) in obj.iter().enumerate() {
+        // Update progress for large objects
+        if show_progress && total_props > 100 && index % 20 == 0 {
+            let progress = (index * 80 / total_props) + 10;
+            println!(
+                "   📊 Progress: {}% - Processing property '{key}' ({}/{total_props})",
+                progress,
+                index + 1
+            );
+        }
+
         // Recursively generate schema for each property using depth-aware function
-        let property_schema = generate_schema_with_depth(value, depth, false);
+        let property_schema =
+            generate_schema_with_depth_and_progress(value, depth, false, show_progress);
 
         properties.insert(key.clone(), property_schema);
 
@@ -259,13 +363,18 @@ fn process_object_with_depth(obj: &serde_json::Map<String, serde_json::Value>, d
     JsonSchema::new_nested_object(properties, required)
 }
 
-/// Processes a JSON array and generates its schema
+/// Processes a JSON array and generates its schema (for testing)
+#[cfg(test)]
 fn process_array(arr: &[serde_json::Value]) -> JsonSchema {
-    process_array_with_depth(arr, 0)
+    process_array_with_depth_and_progress(arr, 0, false)
 }
 
-/// Processes a JSON array and generates its schema with depth tracking
-fn process_array_with_depth(arr: &[serde_json::Value], depth: usize) -> JsonSchema {
+/// Processes a JSON array and generates its schema with depth tracking and progress indication
+fn process_array_with_depth_and_progress(
+    arr: &[serde_json::Value],
+    depth: usize,
+    show_progress: bool,
+) -> JsonSchema {
     // Handle empty array case
     if arr.is_empty() {
         // For empty arrays, we can't infer the item type, so we create a generic array schema
@@ -281,20 +390,55 @@ fn process_array_with_depth(arr: &[serde_json::Value], depth: usize) -> JsonSche
         };
     }
 
-    // Collect all unique types in the array
+    let total_items = arr.len();
+
+    // For very large arrays, sample items instead of processing all
+    let sample_size = if total_items > 10000 {
+        if show_progress {
+            println!(
+                "   📊 Progress: 20% - Large array detected ({total_items} items) - using sampling for performance"
+            );
+        }
+        1000 // Sample first 1000 items for very large arrays
+    } else {
+        total_items
+    };
+
+    // Collect all unique types in the array (or sample)
     let mut type_schemas: Vec<JsonSchema> = Vec::new();
     let mut seen_types: Vec<String> = Vec::new();
 
-    for value in arr {
+    for (index, value) in arr.iter().take(sample_size).enumerate() {
+        // Update progress for large arrays
+        if show_progress && sample_size > 100 && index % 100 == 0 {
+            let progress = (index * 60 / sample_size) + 20;
+            println!(
+                "   📊 Progress: {}% - Analyzing array item {}/{sample_size}",
+                progress,
+                index + 1
+            );
+        }
+
         // Use depth-aware schema generation
-        let item_schema = generate_schema_with_depth(value, depth, false);
+        let item_schema =
+            generate_schema_with_depth_and_progress(value, depth, false, show_progress);
 
         // Create a unique key for this schema to avoid duplicates
-        let schema_key = format!("{:?}", item_schema);
-        
+        let schema_key = format!("{item_schema:?}");
+
         if !seen_types.contains(&schema_key) {
             seen_types.push(schema_key);
             type_schemas.push(item_schema);
+        }
+
+        // Early exit if we've found enough unique types for mixed arrays
+        if type_schemas.len() > 5 {
+            if show_progress {
+                println!(
+                    "   📊 Progress: 80% - Multiple types detected - using first type for schema"
+                );
+            }
+            break;
         }
     }
 
@@ -305,6 +449,12 @@ fn process_array_with_depth(arr: &[serde_json::Value], depth: usize) -> JsonSche
         // For mixed types, we need to use anyOf
         // For now, we'll use the first type as a fallback
         // TODO: Implement proper anyOf support in a future enhancement
+        if show_progress {
+            println!(
+                "   📊 Progress: 85% - Mixed array types detected ({} unique types) - using primary type",
+                type_schemas.len()
+            );
+        }
         JsonSchema::new_nested_array(type_schemas.into_iter().next().unwrap())
     }
 }
@@ -951,7 +1101,7 @@ mod tests {
 
             // Check basic structure
             assert_eq!(serialized["type"], "object");
-            
+
             // Should not have $schema field for nested object
             assert!(!serialized.as_object().unwrap().contains_key("$schema"));
 
@@ -969,9 +1119,24 @@ mod tests {
             assert!(!required.contains(&serde_json::json!("email")));
 
             // Nested properties should not have $schema field
-            assert!(!properties["name"].as_object().unwrap().contains_key("$schema"));
-            assert!(!properties["age"].as_object().unwrap().contains_key("$schema"));
-            assert!(!properties["email"].as_object().unwrap().contains_key("$schema"));
+            assert!(
+                !properties["name"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("$schema")
+            );
+            assert!(
+                !properties["age"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("$schema")
+            );
+            assert!(
+                !properties["email"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key("$schema")
+            );
         } else {
             panic!("Expected JSON object");
         }
@@ -993,7 +1158,7 @@ mod tests {
     #[test]
     fn test_process_array_uniform_strings() {
         let json_array = serde_json::json!(["hello", "world", "test"]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1012,7 +1177,7 @@ mod tests {
     #[test]
     fn test_process_array_uniform_integers() {
         let json_array = serde_json::json!([1, 2, 3, 42, -5]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1029,7 +1194,7 @@ mod tests {
     #[test]
     fn test_process_array_uniform_numbers() {
         let json_array = serde_json::json!([1.5, 2.7, 3.14, -2.5]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1046,7 +1211,7 @@ mod tests {
     #[test]
     fn test_process_array_uniform_booleans() {
         let json_array = serde_json::json!([true, false, true]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1063,7 +1228,7 @@ mod tests {
     #[test]
     fn test_process_array_uniform_nulls() {
         let json_array = serde_json::json!([null, null, null]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1084,7 +1249,7 @@ mod tests {
             {"name": "Jane", "age": 25},
             {"name": "Bob", "age": 35}
         ]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1093,7 +1258,7 @@ mod tests {
 
             let items_schema = schema.items.as_ref().unwrap();
             assert_eq!(items_schema.type_name, SchemaType::Object);
-            
+
             // Check that the object schema has the expected properties
             let properties = items_schema.properties.as_ref().unwrap();
             assert!(properties.contains_key("name"));
@@ -1107,12 +1272,8 @@ mod tests {
 
     #[test]
     fn test_process_array_nested_arrays() {
-        let json_array = serde_json::json!([
-            [1, 2, 3],
-            [4, 5, 6],
-            [7, 8, 9]
-        ]);
-        
+        let json_array = serde_json::json!([[1, 2, 3], [4, 5, 6], [7, 8, 9]]);
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1121,7 +1282,7 @@ mod tests {
 
             let items_schema = schema.items.as_ref().unwrap();
             assert_eq!(items_schema.type_name, SchemaType::Array);
-            
+
             // Check nested array items
             let nested_items = items_schema.items.as_ref().unwrap();
             assert_eq!(nested_items.type_name, SchemaType::Integer);
@@ -1133,7 +1294,7 @@ mod tests {
     #[test]
     fn test_process_array_mixed_types_simple() {
         let json_array = serde_json::json!([1, "hello", true]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1158,7 +1319,7 @@ mod tests {
             42,
             null
         ]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1176,10 +1337,8 @@ mod tests {
     #[test]
     fn test_process_array_duplicate_types() {
         // Test that duplicate types are handled correctly
-        let json_array = serde_json::json!([
-            "hello", "world", "test", "another", "string"
-        ]);
-        
+        let json_array = serde_json::json!(["hello", "world", "test", "another", "string"]);
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1196,7 +1355,7 @@ mod tests {
     #[test]
     fn test_process_array_single_element() {
         let json_array = serde_json::json!(["single"]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1234,7 +1393,7 @@ mod tests {
                 }
             }
         ]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
 
@@ -1243,12 +1402,12 @@ mod tests {
 
             let items_schema = schema.items.as_ref().unwrap();
             assert_eq!(items_schema.type_name, SchemaType::Object);
-            
+
             // Verify the complex nested structure
             let properties = items_schema.properties.as_ref().unwrap();
             assert!(properties.contains_key("user"));
             assert!(properties.contains_key("metadata"));
-            
+
             // Check user object structure
             let user_schema = &properties["user"];
             assert_eq!(user_schema.type_name, SchemaType::Object);
@@ -1257,7 +1416,7 @@ mod tests {
             assert!(user_properties.contains_key("contacts"));
             assert_eq!(user_properties["name"].type_name, SchemaType::String);
             assert_eq!(user_properties["contacts"].type_name, SchemaType::Array);
-            
+
             // Check metadata object structure
             let metadata_schema = &properties["metadata"];
             assert_eq!(metadata_schema.type_name, SchemaType::Object);
@@ -1297,17 +1456,17 @@ mod tests {
         if let serde_json::Value::Array(arr) = deep_nested {
             let schema = process_array(&arr);
             assert_eq!(schema.type_name, SchemaType::Array);
-            
+
             // Follow the nesting
             let level1 = schema.items.as_ref().unwrap();
             assert_eq!(level1.type_name, SchemaType::Array);
-            
+
             let level2 = level1.items.as_ref().unwrap();
             assert_eq!(level2.type_name, SchemaType::Array);
-            
+
             let level3 = level2.items.as_ref().unwrap();
             assert_eq!(level3.type_name, SchemaType::Array);
-            
+
             let level4 = level3.items.as_ref().unwrap();
             assert_eq!(level4.type_name, SchemaType::String);
         }
@@ -1316,21 +1475,21 @@ mod tests {
     #[test]
     fn test_process_array_serialization() {
         let json_array = serde_json::json!(["hello", "world"]);
-        
+
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
             let serialized = serde_json::to_value(&schema).unwrap();
 
             // Check basic structure
             assert_eq!(serialized["type"], "array");
-            
+
             // Should not have $schema field for nested array
             assert!(!serialized.as_object().unwrap().contains_key("$schema"));
 
             // Check items
             let items = &serialized["items"];
             assert_eq!(items["type"], "string");
-            
+
             // Items should not have $schema field
             assert!(!items.as_object().unwrap().contains_key("$schema"));
         } else {
@@ -1345,31 +1504,46 @@ mod tests {
         let null_value = serde_json::Value::Null;
         let schema = generate_schema(&null_value);
         assert_eq!(schema.type_name, SchemaType::Null);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         // Test boolean
         let bool_value = serde_json::json!(true);
         let schema = generate_schema(&bool_value);
         assert_eq!(schema.type_name, SchemaType::Boolean);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         // Test string
         let string_value = serde_json::json!("hello");
         let schema = generate_schema(&string_value);
         assert_eq!(schema.type_name, SchemaType::String);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         // Test integer
         let int_value = serde_json::json!(42);
         let schema = generate_schema(&int_value);
         assert_eq!(schema.type_name, SchemaType::Integer);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         // Test number
         let num_value = serde_json::json!(3.14);
         let schema = generate_schema(&num_value);
         assert_eq!(schema.type_name, SchemaType::Number);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
     }
 
     #[test]
@@ -1384,7 +1558,10 @@ mod tests {
 
         // Check root schema properties
         assert_eq!(schema.type_name, SchemaType::Object);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
         assert!(schema.properties.is_some());
 
         let properties = schema.properties.as_ref().unwrap();
@@ -1416,7 +1593,10 @@ mod tests {
 
         // Check root schema properties
         assert_eq!(schema.type_name, SchemaType::Array);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
         assert!(schema.items.is_some());
 
         let items = schema.items.as_ref().unwrap();
@@ -1441,7 +1621,10 @@ mod tests {
 
         // Check root schema
         assert_eq!(schema.type_name, SchemaType::Object);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         let properties = schema.properties.as_ref().unwrap();
         assert_eq!(properties.len(), 2);
@@ -1483,7 +1666,10 @@ mod tests {
 
         // Check root array schema
         assert_eq!(schema.type_name, SchemaType::Array);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         let items = schema.items.as_ref().unwrap();
         assert_eq!(items.type_name, SchemaType::Object);
@@ -1532,7 +1718,10 @@ mod tests {
 
         // Verify root schema
         assert_eq!(schema.type_name, SchemaType::Object);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
 
         let properties = schema.properties.as_ref().unwrap();
 
@@ -1561,7 +1750,10 @@ mod tests {
         assert_eq!(properties["settings"].type_name, SchemaType::Object);
         let settings_props = properties["settings"].properties.as_ref().unwrap();
         assert_eq!(settings_props["theme"].type_name, SchemaType::String);
-        assert_eq!(settings_props["notifications"].type_name, SchemaType::Object);
+        assert_eq!(
+            settings_props["notifications"].type_name,
+            SchemaType::Object
+        );
 
         let notifications_props = settings_props["notifications"].properties.as_ref().unwrap();
         assert_eq!(notifications_props["email"].type_name, SchemaType::Boolean);
@@ -1590,7 +1782,10 @@ mod tests {
         let empty_obj = serde_json::json!({});
         let schema = generate_schema(&empty_obj);
         assert_eq!(schema.type_name, SchemaType::Object);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
         assert!(schema.properties.as_ref().unwrap().is_empty());
         assert!(schema.required.is_none());
 
@@ -1598,7 +1793,10 @@ mod tests {
         let empty_array = serde_json::json!([]);
         let schema = generate_schema(&empty_array);
         assert_eq!(schema.type_name, SchemaType::Array);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
         assert!(schema.items.is_none()); // Empty array has no items schema
     }
 
@@ -1635,7 +1833,7 @@ mod tests {
     fn test_generate_schema_recursion_depth_limit() {
         // Create a deeply nested structure that would exceed the recursion limit
         let mut deep_json = serde_json::json!("base");
-        
+
         // Create a structure deeper than MAX_RECURSION_DEPTH
         for i in 0..MAX_RECURSION_DEPTH + 10 {
             deep_json = serde_json::json!({
@@ -1647,14 +1845,17 @@ mod tests {
 
         // Should still generate a valid schema without crashing
         assert_eq!(schema.type_name, SchemaType::Object);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
-        
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+
         // The schema should be generated successfully, even if depth limited
         // Let's verify it has properties (at least the first level)
         assert!(schema.properties.is_some());
         let properties = schema.properties.as_ref().unwrap();
         assert!(!properties.is_empty());
-        
+
         // The first property should exist
         let first_key = format!("level_{}", MAX_RECURSION_DEPTH + 9);
         assert!(properties.contains_key(&first_key));
@@ -1664,20 +1865,31 @@ mod tests {
     fn test_generate_schema_with_depth_internal() {
         // Test the internal depth-aware function directly
         let simple_obj = serde_json::json!({"test": "value"});
-        
+
         // Test with normal depth
         let schema_normal = generate_schema_with_depth(&simple_obj, 0, true);
         assert_eq!(schema_normal.type_name, SchemaType::Object);
-        assert_eq!(schema_normal.schema, "https://json-schema.org/draft/2020-12/schema");
-        
+        assert_eq!(
+            schema_normal.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+
         // Test with depth over limit - this should trigger the depth limit
-        let schema_over_limit = generate_schema_with_depth(&simple_obj, MAX_RECURSION_DEPTH + 1, true);
+        let schema_over_limit =
+            generate_schema_with_depth(&simple_obj, MAX_RECURSION_DEPTH + 1, true);
         assert_eq!(schema_over_limit.type_name, SchemaType::Object);
         assert!(schema_over_limit.description.is_some());
-        assert!(schema_over_limit.description.as_ref().unwrap().contains("maximum recursion depth"));
-        
+        assert!(
+            schema_over_limit
+                .description
+                .as_ref()
+                .unwrap()
+                .contains("maximum recursion depth")
+        );
+
         // Test that the function doesn't crash with very high depth
-        let schema_very_deep = generate_schema_with_depth(&simple_obj, MAX_RECURSION_DEPTH + 100, true);
+        let schema_very_deep =
+            generate_schema_with_depth(&simple_obj, MAX_RECURSION_DEPTH + 100, true);
         assert_eq!(schema_very_deep.type_name, SchemaType::Object);
         assert!(schema_very_deep.description.is_some());
     }
@@ -1696,24 +1908,47 @@ mod tests {
         let serialized = serde_json::to_value(&schema).unwrap();
 
         // Check root level serialization
-        assert_eq!(serialized["$schema"], "https://json-schema.org/draft/2020-12/schema");
+        assert_eq!(
+            serialized["$schema"],
+            "https://json-schema.org/draft/2020-12/schema"
+        );
         assert_eq!(serialized["type"], "object");
 
         // Check that nested objects don't have $schema field
         let properties = &serialized["properties"];
         assert_eq!(properties["name"]["type"], "string");
-        assert!(!properties["name"].as_object().unwrap().contains_key("$schema"));
+        assert!(
+            !properties["name"]
+                .as_object()
+                .unwrap()
+                .contains_key("$schema")
+        );
 
         assert_eq!(properties["items"]["type"], "array");
-        assert!(!properties["items"].as_object().unwrap().contains_key("$schema"));
+        assert!(
+            !properties["items"]
+                .as_object()
+                .unwrap()
+                .contains_key("$schema")
+        );
 
         assert_eq!(properties["config"]["type"], "object");
-        assert!(!properties["config"].as_object().unwrap().contains_key("$schema"));
+        assert!(
+            !properties["config"]
+                .as_object()
+                .unwrap()
+                .contains_key("$schema")
+        );
 
         // Check deeply nested
         let config_props = &properties["config"]["properties"];
         assert_eq!(config_props["enabled"]["type"], "boolean");
-        assert!(!config_props["enabled"].as_object().unwrap().contains_key("$schema"));
+        assert!(
+            !config_props["enabled"]
+                .as_object()
+                .unwrap()
+                .contains_key("$schema")
+        );
     }
 
     #[test]
@@ -1730,8 +1965,11 @@ mod tests {
         let schema = generate_schema(&mixed_array);
 
         assert_eq!(schema.type_name, SchemaType::Array);
-        assert_eq!(schema.schema, "https://json-schema.org/draft/2020-12/schema");
-        
+        assert_eq!(
+            schema.schema,
+            "https://json-schema.org/draft/2020-12/schema"
+        );
+
         // Should have items schema (currently uses first type as fallback)
         assert!(schema.items.is_some());
         let items = schema.items.as_ref().unwrap();

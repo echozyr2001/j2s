@@ -1,19 +1,52 @@
 use clap::{Arg, Command};
 
+/// Command line arguments structure for the j2s tool
+/// 
+/// This structure holds all the parsed command line arguments and provides
+/// methods to access them in a consistent way. It supports both positional
+/// and flag-based input specification for flexibility.
 #[derive(Debug, Clone)]
 pub struct CliArgs {
+    /// Input file path specified via --input flag
     pub input: Option<String>,
+    /// Output file path specified via --output flag  
     pub output: Option<String>,
+    /// Input file path specified as positional argument
     pub json_file: Option<String>,
 }
 
 impl CliArgs {
-    /// Get the effective input file path
+    /// Get the effective input file path with priority handling
+    /// 
+    /// This method returns the input file path, giving priority to the --input flag
+    /// over the positional argument. This allows users to override positional arguments
+    /// with explicit flags if needed.
+    /// 
+    /// # Returns
+    /// * `Some(&String)` - The input file path if specified
+    /// * `None` - If no input file was specified
+    /// 
+    /// # Priority Order
+    /// 1. --input flag value (highest priority)
+    /// 2. Positional argument value
+    /// 3. None if neither is specified
     pub fn get_input_path(&self) -> Option<&String> {
         self.input.as_ref().or(self.json_file.as_ref())
     }
 }
 
+/// Parse command line arguments into a CliArgs structure
+/// 
+/// This function uses the clap library to parse command line arguments according
+/// to the application's defined interface. It handles all argument validation
+/// and returns a structured representation of the user's input.
+/// 
+/// # Returns
+/// * `CliArgs` - Parsed command line arguments
+/// 
+/// # Panics
+/// * Will panic if clap encounters an unrecoverable parsing error
+///   (this is the standard behavior for clap applications)
 pub fn parse_args() -> CliArgs {
     let matches = build_cli().get_matches();
     
@@ -24,27 +57,71 @@ pub fn parse_args() -> CliArgs {
     }
 }
 
+/// Print the application help message to stdout
+/// 
+/// This function displays comprehensive usage information including all available
+/// options, arguments, and examples. It's called when the user requests help
+/// via --help or -h flags.
 pub fn print_help() {
     let mut app = build_cli();
     app.print_help().unwrap();
     println!();
 }
 
+/// Print the application version information to stdout
+/// 
+/// This function displays the application name and version number.
+/// The version is automatically extracted from Cargo.toml at compile time.
 pub fn print_version() {
     println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
 }
 
+/// Build the clap Command structure for argument parsing
+/// 
+/// This function defines the complete command-line interface for the j2s tool,
+/// including all arguments, options, help text, and validation rules.
+/// 
+/// # Returns
+/// * `Command` - A configured clap Command ready for argument parsing
+/// 
+/// # Interface Design
+/// The CLI supports multiple input methods for flexibility:
+/// - Positional argument: `j2s input.json`
+/// - Input flag: `j2s --input input.json` or `j2s -i input.json`
+/// - Output control: `--output path` or `-o path`
+/// 
+/// # Examples
+/// ```bash
+/// j2s data.json                           # Basic usage
+/// j2s --input data.json                   # Using input flag
+/// j2s data.json --output schema.json      # Custom output path
+/// j2s -i data.json -o schema.json         # Short flags
+/// ```
 fn build_cli() -> Command {
     Command::new("j2s")
         .version(env!("CARGO_PKG_VERSION"))
         .author("JSON to Schema Tool")
         .about("Generate JSON Schema from JSON files")
-        .long_about("j2s is a command-line tool that generates JSON Schema files from JSON input files. It analyzes the structure of JSON data and creates corresponding schema definitions following JSON Schema Draft 2020-12 specification.")
+        .long_about(
+            "j2s is a command-line tool that generates JSON Schema files from JSON input files.\n\
+             It analyzes the structure of JSON data and creates corresponding schema definitions\n\
+             following JSON Schema Draft 2020-12 specification.\n\n\
+             EXAMPLES:\n  \
+             j2s data.json                           # Generate data.schema.json\n  \
+             j2s --input data.json                   # Same as above using flag\n  \
+             j2s data.json --output my-schema.json   # Custom output filename\n  \
+             j2s -i data.json -o schema.json         # Using short flags\n\n\
+             PERFORMANCE:\n  \
+             - Files up to 100MB are supported\n  \
+             - Large files (>10MB) show progress indicators\n  \
+             - Deep nesting is automatically limited to prevent stack overflow"
+        )
         .arg(
             Arg::new("json_file")
                 .help("Input JSON file path")
                 .value_name("JSON_FILE")
                 .index(1)
+                .help_heading("INPUT")
         )
         .arg(
             Arg::new("input")
@@ -52,6 +129,7 @@ fn build_cli() -> Command {
                 .long("input")
                 .value_name("FILE")
                 .help("Input JSON file path (alternative to positional argument)")
+                .help_heading("INPUT")
         )
         .arg(
             Arg::new("output")
@@ -59,8 +137,8 @@ fn build_cli() -> Command {
                 .long("output")
                 .value_name("FILE")
                 .help("Output schema file path (default: <input_name>.schema.json)")
+                .help_heading("OUTPUT")
         )
-
 }
 
 #[cfg(test)]

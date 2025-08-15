@@ -26,14 +26,14 @@ pub type Result<T> = std::result::Result<T, J2sError>;
 // Automatic conversion from std::io::Error to J2sError
 impl From<std::io::Error> for J2sError {
     fn from(err: std::io::Error) -> Self {
-        J2sError::File(format!("IO error: {}", err))
+        J2sError::File(format!("IO error: {err}"))
     }
 }
 
 // Automatic conversion from serde_json::Error to J2sError
 impl From<serde_json::Error> for J2sError {
     fn from(err: serde_json::Error) -> Self {
-        J2sError::Json(format!("JSON error: {}", err))
+        J2sError::Json(format!("JSON error: {err}"))
     }
 }
 
