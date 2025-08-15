@@ -59,21 +59,25 @@ impl J2sError {
     }
 
     /// Check if this is a file-related error
+    #[allow(dead_code)]
     pub fn is_file_error(&self) -> bool {
         matches!(self, J2sError::File(_))
     }
 
     /// Check if this is a JSON-related error
+    #[allow(dead_code)]
     pub fn is_json_error(&self) -> bool {
         matches!(self, J2sError::Json(_))
     }
 
     /// Check if this is a schema generation error
+    #[allow(dead_code)]
     pub fn is_schema_error(&self) -> bool {
         matches!(self, J2sError::Schema(_))
     }
 
     /// Check if this is an argument error
+    #[allow(dead_code)]
     pub fn is_argument_error(&self) -> bool {
         matches!(self, J2sError::Argument(_))
     }

@@ -74,6 +74,7 @@ impl JsonSchema {
     }
 
     /// Creates a new object schema with properties
+    #[allow(dead_code)]
     pub fn new_object(properties: HashMap<String, JsonSchema>, required: Vec<String>) -> Self {
         Self {
             schema: "https://json-schema.org/draft/2020-12/schema".to_string(),
@@ -111,6 +112,7 @@ impl JsonSchema {
     }
 
     /// Creates a new array schema with items type
+    #[allow(dead_code)]
     pub fn new_array(items: JsonSchema) -> Self {
         Self {
             schema: "https://json-schema.org/draft/2020-12/schema".to_string(),
@@ -137,6 +139,7 @@ impl JsonSchema {
     }
 
     /// Sets the title of the schema
+    #[allow(dead_code)]
     pub fn with_title(mut self, title: String) -> Self {
         self.title = Some(title);
         self
@@ -461,6 +464,7 @@ fn process_array_with_depth_and_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::f64;
 
     #[test]
     fn test_schema_type_serialization() {
@@ -751,10 +755,10 @@ mod tests {
     #[test]
     fn test_infer_type_number() {
         // Test floating point numbers
-        let float = serde_json::json!(3.14);
+        let float = serde_json::json!(f64::consts::PI);
         assert_eq!(infer_type(&float), SchemaType::Number);
 
-        let negative_float = serde_json::json!(-2.718);
+        let negative_float = serde_json::json!(-f64::consts::E);
         assert_eq!(infer_type(&negative_float), SchemaType::Number);
 
         // Test scientific notation
@@ -831,7 +835,7 @@ mod tests {
         assert!(inferred_type == SchemaType::Integer || inferred_type == SchemaType::Number);
 
         // Very large numbers that might overflow
-        let very_large = serde_json::json!(1.7976931348623157e+308);
+        let very_large = serde_json::json!(1.797_693_134_862_315_7e308);
         assert_eq!(infer_type(&very_large), SchemaType::Number);
 
         // Very small numbers
@@ -847,7 +851,7 @@ mod tests {
             "boolean_field": true,
             "string_field": "hello",
             "integer_field": 42,
-            "number_field": 3.14,
+            "number_field": f64::consts::PI,
             "array_field": [1, 2, 3],
             "object_field": {
                 "nested": "value"
@@ -1019,7 +1023,7 @@ mod tests {
             "boolean_field": true,
             "string_field": "hello",
             "integer_field": 42,
-            "number_field": 3.14159,
+            "number_field": f64::consts::PI,
             "array_field": [1, 2, 3],
             "object_field": {
                 "nested": "value"
@@ -1192,7 +1196,7 @@ mod tests {
 
     #[test]
     fn test_process_array_uniform_numbers() {
-        let json_array = serde_json::json!([1.5, 2.7, 3.14, -2.5]);
+        let json_array = serde_json::json!([1.5, 2.7, f64::consts::PI, -2.5]);
 
         if let serde_json::Value::Array(arr) = json_array {
             let schema = process_array(&arr);
@@ -1536,7 +1540,7 @@ mod tests {
         );
 
         // Test number
-        let num_value = serde_json::json!(3.14);
+        let num_value = serde_json::json!(f64::consts::PI);
         let schema = generate_schema(&num_value);
         assert_eq!(schema.type_name, SchemaType::Number);
         assert_eq!(
@@ -1708,7 +1712,7 @@ mod tests {
                 }
             },
             "count": 42,
-            "rate": 3.14,
+            "rate": f64::consts::PI,
             "enabled": true,
             "notes": null
         });
