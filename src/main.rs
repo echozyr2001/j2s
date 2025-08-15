@@ -45,6 +45,7 @@
 //! - `error`: Comprehensive error types and handling
 
 mod cli;
+mod codegen;
 mod error;
 mod file_ops;
 mod schema_generator;
