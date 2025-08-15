@@ -21,7 +21,7 @@ fn test_deeply_nested_json_stress() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -46,7 +46,7 @@ fn test_wide_json_object() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -71,7 +71,7 @@ fn test_large_array() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -145,7 +145,7 @@ fn test_complex_mixed_types() {
 
     fs::write(&input_path, complex_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -195,7 +195,7 @@ fn test_repeated_patterns() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -227,7 +227,7 @@ fn test_very_long_strings() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -253,7 +253,7 @@ fn test_many_nulls() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -286,7 +286,7 @@ fn test_alternating_array_types() {
 
     fs::write(&input_path, json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());

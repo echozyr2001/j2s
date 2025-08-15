@@ -12,7 +12,7 @@ fn test_empty_file() {
     // Create completely empty file
     fs::write(&input_path, "").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -28,7 +28,7 @@ fn test_whitespace_only_file() {
     // Create file with only whitespace
     fs::write(&input_path, "   \n\t  \r\n  ").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -43,7 +43,7 @@ fn test_malformed_json_missing_brace() {
 
     fs::write(&input_path, r#"{"name": "test", "value": 123"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -58,7 +58,7 @@ fn test_malformed_json_trailing_comma() {
 
     fs::write(&input_path, r#"{"name": "test", "value": 123,}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -73,7 +73,7 @@ fn test_malformed_json_unquoted_keys() {
 
     fs::write(&input_path, r#"{name: "test", value: 123}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -88,7 +88,7 @@ fn test_malformed_json_single_quotes() {
 
     fs::write(&input_path, r#"{'name': 'test', 'value': 123}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -105,7 +105,7 @@ fn test_binary_file_input() {
     let binary_data = vec![0xFF, 0xFE, 0x00, 0x01, 0x80, 0x90];
     fs::write(&input_path, binary_data).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -123,7 +123,7 @@ fn test_very_long_file_path() {
 
     fs::write(&input_path, r#"{"test": "long_path"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 }
 
@@ -134,7 +134,7 @@ fn test_directory_as_input() {
     let dir_path = temp_dir.path().join("subdir");
     fs::create_dir(&dir_path).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&dir_path)
         .assert()
         .failure()
@@ -151,7 +151,7 @@ fn test_special_chars_in_path() {
 
     fs::write(&input_path, r#"{"special": "chars"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 }
 
@@ -168,7 +168,7 @@ fn test_overwrite_existing_output() {
     // Create existing output file with different content
     fs::write(&output_path, "old content").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .arg("--output")
         .arg(&output_path)
@@ -201,7 +201,7 @@ fn test_readonly_output_file() {
         fs::set_permissions(&output_path, perms).unwrap();
     }
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .arg("--output")
         .arg(&output_path)
@@ -213,7 +213,7 @@ fn test_readonly_output_file() {
 /// Test handling of invalid command line arguments
 #[test]
 fn test_invalid_arguments() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("--invalid-flag")
         .assert()
         .failure()
@@ -231,7 +231,7 @@ fn test_conflicting_arguments() {
     fs::write(&input2, r#"{"file": 2}"#).unwrap();
 
     // Test with both positional and --input flag (--input should take precedence)
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input1) // positional
         .arg("--input")
         .arg(&input2) // flag
@@ -252,6 +252,6 @@ fn test_json_with_control_chars() {
     let json_with_controls = r#"{"text": "line1\nline2\ttab\rcarriage"}"#;
     fs::write(&input_path, json_with_controls).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 }

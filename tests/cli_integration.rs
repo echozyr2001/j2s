@@ -6,7 +6,7 @@ use tempfile::TempDir;
 /// Test basic program execution with help flag
 #[test]
 fn test_help_flag() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("--help")
         .assert()
         .success()
@@ -20,7 +20,7 @@ fn test_help_flag() {
 /// Test short help flag
 #[test]
 fn test_help_flag_short() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("-h")
         .assert()
         .success()
@@ -32,7 +32,7 @@ fn test_help_flag_short() {
 /// Test version flag
 #[test]
 fn test_version_flag() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("--version")
         .assert()
         .success()
@@ -42,7 +42,7 @@ fn test_version_flag() {
 /// Test short version flag
 #[test]
 fn test_version_flag_short() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("-V")
         .assert()
         .success()
@@ -52,7 +52,7 @@ fn test_version_flag_short() {
 /// Test error when no input file is provided
 #[test]
 fn test_no_input_file_error() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.assert()
         .failure()
         .stderr(predicate::str::contains("No input file specified"));
@@ -61,7 +61,7 @@ fn test_no_input_file_error() {
 /// Test error when input file doesn't exist
 #[test]
 fn test_nonexistent_input_file() {
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("nonexistent.json")
         .assert()
         .failure()
@@ -78,7 +78,7 @@ fn test_simple_json_object_positional() {
     // Create simple JSON file
     fs::write(&input_path, r#"{"name": "John", "age": 30}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .success()
@@ -112,7 +112,7 @@ fn test_simple_json_array() {
     // Create JSON array file
     fs::write(&input_path, r#"[1, 2, 3, 4, 5]"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     // Verify output file was created
@@ -154,7 +154,7 @@ fn test_complex_nested_json() {
 
     fs::write(&input_path, complex_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     // Verify output file was created
@@ -178,7 +178,7 @@ fn test_input_flag() {
 
     fs::write(&input_path, r#"{"test": true}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("--input").arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -193,7 +193,7 @@ fn test_input_flag_short() {
 
     fs::write(&input_path, r#"{"test": true}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("-i").arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -208,7 +208,7 @@ fn test_custom_output_path() {
 
     fs::write(&input_path, r#"{"custom": "output"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .arg("--output")
         .arg(&output_path)
@@ -232,7 +232,7 @@ fn test_custom_output_path_short() {
 
     fs::write(&input_path, r#"{"short": "flag"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .arg("-o")
         .arg(&output_path)
@@ -251,7 +251,7 @@ fn test_input_and_output_flags() {
 
     fs::write(&input_path, r#"{"combined": "flags"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("--input")
         .arg(&input_path)
         .arg("--output")
@@ -271,7 +271,7 @@ fn test_short_flags_combination() {
 
     fs::write(&input_path, r#"{"short": "flags"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg("-i")
         .arg(&input_path)
         .arg("-o")
@@ -291,7 +291,7 @@ fn test_invalid_json_input() {
     // Create invalid JSON file
     fs::write(&input_path, r#"{"invalid": json, missing quotes}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .assert()
         .failure()
@@ -307,7 +307,7 @@ fn test_empty_json_object() {
 
     fs::write(&input_path, r#"{}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -326,7 +326,7 @@ fn test_empty_json_array() {
 
     fs::write(&input_path, r#"[]"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -353,7 +353,7 @@ fn test_all_primitive_types() {
 
     fs::write(&input_path, json_with_primitives).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -391,7 +391,7 @@ fn test_deeply_nested_structure() {
 
     fs::write(&input_path, deep_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -422,7 +422,7 @@ fn test_mixed_type_array() {
 
     fs::write(&input_path, mixed_array_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -449,7 +449,7 @@ fn test_array_of_objects() {
 
     fs::write(&input_path, object_array_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -487,7 +487,7 @@ fn test_large_json_file() {
 
     fs::write(&input_path, large_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -522,7 +522,7 @@ fn test_output_permission_error() {
 
     fs::write(&input_path, r#"{"test": "permission"}"#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path)
         .arg("--output")
         .arg(&output_path)
@@ -548,7 +548,7 @@ fn test_unicode_json() {
 
     fs::write(&input_path, unicode_json).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -573,7 +573,7 @@ fn test_long_strings() {
 
     fs::write(&input_path, json_with_long_string).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -588,7 +588,7 @@ fn test_null_only_json() {
 
     fs::write(&input_path, "null").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -609,7 +609,7 @@ fn test_boolean_only_json() {
 
     fs::write(&input_path, "true").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -629,7 +629,7 @@ fn test_number_only_json() {
 
     fs::write(&input_path, "42").unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
@@ -650,7 +650,7 @@ fn test_string_only_json() {
 
     fs::write(&input_path, r#""hello world""#).unwrap();
 
-    let mut cmd = Command::cargo_bin("json2schema").unwrap();
+    let mut cmd = Command::cargo_bin("j2s").unwrap();
     cmd.arg(&input_path).assert().success();
 
     assert!(output_path.exists());
