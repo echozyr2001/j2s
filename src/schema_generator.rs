@@ -461,7 +461,6 @@ fn process_array_with_depth_and_progress(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
 
     #[test]
     fn test_schema_type_serialization() {

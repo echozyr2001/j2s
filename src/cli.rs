@@ -1,7 +1,7 @@
 use clap::{Arg, Command};
 
 /// Command line arguments structure for the j2s tool
-/// 
+///
 /// This structure holds all the parsed command line arguments and provides
 /// methods to access them in a consistent way. It supports both positional
 /// and flag-based input specification for flexibility.
@@ -17,15 +17,15 @@ pub struct CliArgs {
 
 impl CliArgs {
     /// Get the effective input file path with priority handling
-    /// 
+    ///
     /// This method returns the input file path, giving priority to the --input flag
     /// over the positional argument. This allows users to override positional arguments
     /// with explicit flags if needed.
-    /// 
+    ///
     /// # Returns
     /// * `Some(&String)` - The input file path if specified
     /// * `None` - If no input file was specified
-    /// 
+    ///
     /// # Priority Order
     /// 1. --input flag value (highest priority)
     /// 2. Positional argument value
@@ -36,20 +36,20 @@ impl CliArgs {
 }
 
 /// Parse command line arguments into a CliArgs structure
-/// 
+///
 /// This function uses the clap library to parse command line arguments according
 /// to the application's defined interface. It handles all argument validation
 /// and returns a structured representation of the user's input.
-/// 
+///
 /// # Returns
 /// * `CliArgs` - Parsed command line arguments
-/// 
+///
 /// # Panics
 /// * Will panic if clap encounters an unrecoverable parsing error
 ///   (this is the standard behavior for clap applications)
 pub fn parse_args() -> CliArgs {
     let matches = build_cli().get_matches();
-    
+
     CliArgs {
         input: matches.get_one::<String>("input").cloned(),
         output: matches.get_one::<String>("output").cloned(),
@@ -58,7 +58,7 @@ pub fn parse_args() -> CliArgs {
 }
 
 /// Print the application help message to stdout
-/// 
+///
 /// This function displays comprehensive usage information including all available
 /// options, arguments, and examples. It's called when the user requests help
 /// via --help or -h flags.
@@ -69,7 +69,7 @@ pub fn print_help() {
 }
 
 /// Print the application version information to stdout
-/// 
+///
 /// This function displays the application name and version number.
 /// The version is automatically extracted from Cargo.toml at compile time.
 pub fn print_version() {
@@ -77,19 +77,19 @@ pub fn print_version() {
 }
 
 /// Build the clap Command structure for argument parsing
-/// 
+///
 /// This function defines the complete command-line interface for the j2s tool,
 /// including all arguments, options, help text, and validation rules.
-/// 
+///
 /// # Returns
 /// * `Command` - A configured clap Command ready for argument parsing
-/// 
+///
 /// # Interface Design
 /// The CLI supports multiple input methods for flexibility:
 /// - Positional argument: `j2s input.json`
 /// - Input flag: `j2s --input input.json` or `j2s -i input.json`
 /// - Output control: `--output path` or `-o path`
-/// 
+///
 /// # Examples
 /// ```bash
 /// j2s data.json                           # Basic usage
@@ -114,14 +114,14 @@ fn build_cli() -> Command {
              PERFORMANCE:\n  \
              - Files up to 100MB are supported\n  \
              - Large files (>10MB) show progress indicators\n  \
-             - Deep nesting is automatically limited to prevent stack overflow"
+             - Deep nesting is automatically limited to prevent stack overflow",
         )
         .arg(
             Arg::new("json_file")
                 .help("Input JSON file path")
                 .value_name("JSON_FILE")
                 .index(1)
-                .help_heading("INPUT")
+                .help_heading("INPUT"),
         )
         .arg(
             Arg::new("input")
@@ -129,7 +129,7 @@ fn build_cli() -> Command {
                 .long("input")
                 .value_name("FILE")
                 .help("Input JSON file path (alternative to positional argument)")
-                .help_heading("INPUT")
+                .help_heading("INPUT"),
         )
         .arg(
             Arg::new("output")
@@ -137,7 +137,7 @@ fn build_cli() -> Command {
                 .long("output")
                 .value_name("FILE")
                 .help("Output schema file path (default: <input_name>.schema.json)")
-                .help_heading("OUTPUT")
+                .help_heading("OUTPUT"),
         )
 }
 
@@ -196,13 +196,13 @@ mod tests {
     fn test_parse_args_with_positional() {
         let cmd = build_cli();
         let matches = cmd.try_get_matches_from(vec!["j2s", "input.json"]).unwrap();
-        
+
         let args = CliArgs {
             input: matches.get_one::<String>("input").cloned(),
             output: matches.get_one::<String>("output").cloned(),
             json_file: matches.get_one::<String>("json_file").cloned(),
         };
-        
+
         assert_eq!(args.json_file, Some("input.json".to_string()));
         assert_eq!(args.input, None);
         assert_eq!(args.output, None);
@@ -211,14 +211,16 @@ mod tests {
     #[test]
     fn test_parse_args_with_input_flag() {
         let cmd = build_cli();
-        let matches = cmd.try_get_matches_from(vec!["j2s", "--input", "test.json"]).unwrap();
-        
+        let matches = cmd
+            .try_get_matches_from(vec!["j2s", "--input", "test.json"])
+            .unwrap();
+
         let args = CliArgs {
             input: matches.get_one::<String>("input").cloned(),
             output: matches.get_one::<String>("output").cloned(),
             json_file: matches.get_one::<String>("json_file").cloned(),
         };
-        
+
         assert_eq!(args.input, Some("test.json".to_string()));
         assert_eq!(args.json_file, None);
         assert_eq!(args.output, None);
@@ -227,14 +229,16 @@ mod tests {
     #[test]
     fn test_parse_args_with_output_flag() {
         let cmd = build_cli();
-        let matches = cmd.try_get_matches_from(vec!["j2s", "input.json", "--output", "schema.json"]).unwrap();
-        
+        let matches = cmd
+            .try_get_matches_from(vec!["j2s", "input.json", "--output", "schema.json"])
+            .unwrap();
+
         let args = CliArgs {
             input: matches.get_one::<String>("input").cloned(),
             output: matches.get_one::<String>("output").cloned(),
             json_file: matches.get_one::<String>("json_file").cloned(),
         };
-        
+
         assert_eq!(args.json_file, Some("input.json".to_string()));
         assert_eq!(args.output, Some("schema.json".to_string()));
         assert_eq!(args.input, None);
@@ -243,14 +247,22 @@ mod tests {
     #[test]
     fn test_parse_args_with_all_flags() {
         let cmd = build_cli();
-        let matches = cmd.try_get_matches_from(vec!["j2s", "--input", "input.json", "--output", "output.json"]).unwrap();
-        
+        let matches = cmd
+            .try_get_matches_from(vec![
+                "j2s",
+                "--input",
+                "input.json",
+                "--output",
+                "output.json",
+            ])
+            .unwrap();
+
         let args = CliArgs {
             input: matches.get_one::<String>("input").cloned(),
             output: matches.get_one::<String>("output").cloned(),
             json_file: matches.get_one::<String>("json_file").cloned(),
         };
-        
+
         assert_eq!(args.input, Some("input.json".to_string()));
         assert_eq!(args.output, Some("output.json".to_string()));
         assert_eq!(args.json_file, None);
@@ -259,14 +271,16 @@ mod tests {
     #[test]
     fn test_parse_args_short_flags() {
         let cmd = build_cli();
-        let matches = cmd.try_get_matches_from(vec!["j2s", "-i", "input.json", "-o", "output.json"]).unwrap();
-        
+        let matches = cmd
+            .try_get_matches_from(vec!["j2s", "-i", "input.json", "-o", "output.json"])
+            .unwrap();
+
         let args = CliArgs {
             input: matches.get_one::<String>("input").cloned(),
             output: matches.get_one::<String>("output").cloned(),
             json_file: matches.get_one::<String>("json_file").cloned(),
         };
-        
+
         assert_eq!(args.input, Some("input.json".to_string()));
         assert_eq!(args.output, Some("output.json".to_string()));
         assert_eq!(args.json_file, None);
@@ -277,10 +291,10 @@ mod tests {
         // This test verifies that parse_args works with actual command line arguments
         // We can't easily test this with std::env::args, but we can test the build_cli function
         let mut cmd = build_cli();
-        
+
         // Test that the command can be built without errors
         assert_eq!(cmd.get_name(), "j2s");
-        
+
         // Test help text contains expected information
         let help_text = cmd.render_help().to_string();
         assert!(help_text.contains("Generate JSON Schema from JSON files"));
@@ -299,4 +313,5 @@ mod tests {
     fn test_print_help_function() {
         // Test that print_help doesn't panic
         print_help();
-    }}
+    }
+}

@@ -6,15 +6,15 @@ pub enum J2sError {
     /// File operation errors (reading, writing, path issues)
     #[error("File operation failed: {0}")]
     File(String),
-    
+
     /// JSON parsing and validation errors
     #[error("JSON parsing failed: {0}")]
     Json(String),
-    
+
     /// Schema generation errors
     #[error("Schema generation failed: {0}")]
     Schema(String),
-    
+
     /// Command line argument errors
     #[error("Invalid arguments: {0}")]
     Argument(String),
@@ -42,37 +42,37 @@ impl J2sError {
     pub fn file_error(msg: impl Into<String>) -> Self {
         J2sError::File(msg.into())
     }
-    
+
     /// Create a new JSON error with a custom message
     pub fn json_error(msg: impl Into<String>) -> Self {
         J2sError::Json(msg.into())
     }
-    
+
     /// Create a new schema generation error with a custom message
     pub fn schema_error(msg: impl Into<String>) -> Self {
         J2sError::Schema(msg.into())
     }
-    
+
     /// Create a new argument error with a custom message
     pub fn argument_error(msg: impl Into<String>) -> Self {
         J2sError::Argument(msg.into())
     }
-    
+
     /// Check if this is a file-related error
     pub fn is_file_error(&self) -> bool {
         matches!(self, J2sError::File(_))
     }
-    
+
     /// Check if this is a JSON-related error
     pub fn is_json_error(&self) -> bool {
         matches!(self, J2sError::Json(_))
     }
-    
+
     /// Check if this is a schema generation error
     pub fn is_schema_error(&self) -> bool {
         matches!(self, J2sError::Schema(_))
     }
-    
+
     /// Check if this is an argument error
     pub fn is_argument_error(&self) -> bool {
         matches!(self, J2sError::Argument(_))
@@ -87,35 +87,56 @@ mod tests {
     #[test]
     fn test_error_display() {
         let file_err = J2sError::File("test file error".to_string());
-        assert_eq!(file_err.to_string(), "File operation failed: test file error");
-        
+        assert_eq!(
+            file_err.to_string(),
+            "File operation failed: test file error"
+        );
+
         let json_err = J2sError::Json("test json error".to_string());
         assert_eq!(json_err.to_string(), "JSON parsing failed: test json error");
-        
+
         let schema_err = J2sError::Schema("test schema error".to_string());
-        assert_eq!(schema_err.to_string(), "Schema generation failed: test schema error");
-        
+        assert_eq!(
+            schema_err.to_string(),
+            "Schema generation failed: test schema error"
+        );
+
         let arg_err = J2sError::Argument("test argument error".to_string());
-        assert_eq!(arg_err.to_string(), "Invalid arguments: test argument error");
+        assert_eq!(
+            arg_err.to_string(),
+            "Invalid arguments: test argument error"
+        );
     }
 
     #[test]
     fn test_error_constructors() {
         let file_err = J2sError::file_error("custom file error");
         assert!(file_err.is_file_error());
-        assert_eq!(file_err.to_string(), "File operation failed: custom file error");
-        
+        assert_eq!(
+            file_err.to_string(),
+            "File operation failed: custom file error"
+        );
+
         let json_err = J2sError::json_error("custom json error");
         assert!(json_err.is_json_error());
-        assert_eq!(json_err.to_string(), "JSON parsing failed: custom json error");
-        
+        assert_eq!(
+            json_err.to_string(),
+            "JSON parsing failed: custom json error"
+        );
+
         let schema_err = J2sError::schema_error("custom schema error");
         assert!(schema_err.is_schema_error());
-        assert_eq!(schema_err.to_string(), "Schema generation failed: custom schema error");
-        
+        assert_eq!(
+            schema_err.to_string(),
+            "Schema generation failed: custom schema error"
+        );
+
         let arg_err = J2sError::argument_error("custom argument error");
         assert!(arg_err.is_argument_error());
-        assert_eq!(arg_err.to_string(), "Invalid arguments: custom argument error");
+        assert_eq!(
+            arg_err.to_string(),
+            "Invalid arguments: custom argument error"
+        );
     }
 
     #[test]
@@ -125,19 +146,19 @@ mod tests {
         assert!(!file_err.is_json_error());
         assert!(!file_err.is_schema_error());
         assert!(!file_err.is_argument_error());
-        
+
         let json_err = J2sError::Json("test".to_string());
         assert!(!json_err.is_file_error());
         assert!(json_err.is_json_error());
         assert!(!json_err.is_schema_error());
         assert!(!json_err.is_argument_error());
-        
+
         let schema_err = J2sError::Schema("test".to_string());
         assert!(!schema_err.is_file_error());
         assert!(!schema_err.is_json_error());
         assert!(schema_err.is_schema_error());
         assert!(!schema_err.is_argument_error());
-        
+
         let arg_err = J2sError::Argument("test".to_string());
         assert!(!arg_err.is_file_error());
         assert!(!arg_err.is_json_error());
@@ -149,7 +170,7 @@ mod tests {
     fn test_from_io_error() {
         let io_err = io::Error::new(io::ErrorKind::NotFound, "file not found");
         let j2s_err: J2sError = io_err.into();
-        
+
         assert!(j2s_err.is_file_error());
         assert!(j2s_err.to_string().contains("IO error"));
         assert!(j2s_err.to_string().contains("file not found"));
@@ -160,7 +181,7 @@ mod tests {
         let invalid_json = "{ invalid json }";
         let json_err = serde_json::from_str::<serde_json::Value>(invalid_json).unwrap_err();
         let j2s_err: J2sError = json_err.into();
-        
+
         assert!(j2s_err.is_json_error());
         assert!(j2s_err.to_string().contains("JSON error"));
     }
@@ -168,7 +189,7 @@ mod tests {
     #[test]
     fn test_error_debug() {
         let err = J2sError::File("debug test".to_string());
-        let debug_str = format!("{:?}", err);
+        let debug_str = format!("{err:?}");
         assert!(debug_str.contains("File"));
         assert!(debug_str.contains("debug test"));
     }
@@ -178,15 +199,15 @@ mod tests {
         fn test_function() -> Result<String> {
             Ok("success".to_string())
         }
-        
+
         let result = test_function();
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
-        
+
         fn test_error_function() -> Result<String> {
             Err(J2sError::file_error("test error"))
         }
-        
+
         let error_result = test_error_function();
         assert!(error_result.is_err());
         assert!(error_result.unwrap_err().is_file_error());
@@ -197,7 +218,7 @@ mod tests {
         // Test that errors can be chained properly
         let original_err = io::Error::new(io::ErrorKind::PermissionDenied, "access denied");
         let j2s_err: J2sError = original_err.into();
-        
+
         // The error should contain information about the original error
         let error_string = j2s_err.to_string();
         assert!(error_string.contains("File operation failed"));
