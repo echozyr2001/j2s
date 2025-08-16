@@ -4,9 +4,10 @@
 //! It generates Rust structs with appropriate serde annotations, type mappings, and
 //! follows Rust naming conventions and best practices.
 
+use crate::codegen::comments::{CommentGenerator, RustCommentGenerator};
 use crate::codegen::generator::{CodeGenerator, GenerationOptions};
 use crate::codegen::types::{FieldDefinition, FieldType, StructDefinition};
-use crate::codegen::utils::{NameConverter, generate_timestamp, escape_comment_string};
+use crate::codegen::utils::{NameConverter, escape_comment_string, generate_timestamp};
 use crate::error::Result;
 use serde_json::Value;
 use std::collections::HashSet;
@@ -21,6 +22,8 @@ use std::collections::HashSet;
 pub struct RustGenerator {
     /// Rust reserved keywords that need to be avoided in generated identifiers
     keywords: HashSet<String>,
+    /// Comment generator for Rust-specific comments
+    comment_generator: RustCommentGenerator,
 }
 
 impl RustGenerator {
@@ -43,7 +46,10 @@ impl RustGenerator {
             keywords.insert(keyword.to_string());
         }
         
-        Self { keywords }
+        Self { 
+            keywords,
+            comment_generator: RustCommentGenerator,
+        }
     }
 
     /// Map a FieldType to the appropriate Rust type string

@@ -23,6 +23,7 @@
 //! let code = generator.generate(&json_value, &options)?;
 //! ```
 
+pub mod comments;
 pub mod factory;
 pub mod generator;
 pub mod languages;
