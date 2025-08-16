@@ -13,6 +13,172 @@ use std::collections::HashSet;
 pub struct NameConverter;
 
 impl NameConverter {
+    /// Get reserved keywords for a specific language
+    ///
+    /// Returns a HashSet of reserved keywords that should be avoided when
+    /// generating identifiers for the specified language.
+    ///
+    /// # Arguments
+    /// * `language` - The target language ("go", "rust", "typescript", "python")
+    ///
+    /// # Returns
+    /// * `HashSet<String>` - Set of reserved keywords for the language
+    pub fn get_reserved_keywords(language: &str) -> HashSet<String> {
+        let keywords = match language {
+            "go" => vec![
+                "break", "case", "chan", "const", "continue", "default", "defer", "else",
+                "fallthrough", "for", "func", "go", "goto", "if", "import", "interface",
+                "map", "package", "range", "return", "select", "struct", "switch", "type",
+                "var", "bool", "byte", "complex64", "complex128", "error", "float32",
+                "float64", "int", "int8", "int16", "int32", "int64", "rune", "string",
+                "uint", "uint8", "uint16", "uint32", "uint64", "uintptr", "true", "false",
+                "iota", "nil", "append", "cap", "close", "complex", "copy", "delete",
+                "imag", "len", "make", "new", "panic", "print", "println", "real", "recover"
+            ],
+            "rust" => vec![
+                "as", "break", "const", "continue", "crate", "else", "enum", "extern",
+                "false", "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod",
+                "move", "mut", "pub", "ref", "return", "self", "Self", "static", "struct",
+                "super", "trait", "true", "type", "unsafe", "use", "where", "while",
+                "async", "await", "dyn", "abstract", "become", "box", "do", "final",
+                "macro", "override", "priv", "typeof", "unsized", "virtual", "yield",
+                "try", "union", "raw"
+            ],
+            "typescript" => vec![
+                "break", "case", "catch", "class", "const", "continue", "debugger",
+                "default", "delete", "do", "else", "enum", "export", "extends", "false",
+                "finally", "for", "function", "if", "import", "in", "instanceof", "new",
+                "null", "return", "super", "switch", "this", "throw", "true", "try",
+                "typeof", "var", "void", "while", "with", "as", "implements", "interface",
+                "let", "package", "private", "protected", "public", "static", "yield",
+                "any", "boolean", "constructor", "declare", "get", "module", "require",
+                "number", "set", "string", "symbol", "type", "from", "of", "namespace",
+                "abstract", "async", "await", "is", "keyof", "readonly", "unique",
+                "infer", "never", "object", "unknown"
+            ],
+            "python" => vec![
+                "False", "None", "True", "and", "as", "assert", "async", "await", "break",
+                "class", "continue", "def", "del", "elif", "else", "except", "finally",
+                "for", "from", "global", "if", "import", "in", "is", "lambda", "nonlocal",
+                "not", "or", "pass", "raise", "return", "try", "while", "with", "yield",
+                "match", "case", "type", "int", "float", "str", "bool", "list", "dict",
+                "tuple", "set", "frozenset", "bytes", "bytearray", "memoryview", "range",
+                "enumerate", "zip", "map", "filter", "sorted", "reversed", "len", "sum",
+                "min", "max", "abs", "round", "pow", "divmod", "isinstance", "issubclass",
+                "hasattr", "getattr", "setattr", "delattr", "callable", "iter", "next",
+                "open", "print", "input", "repr", "str", "chr", "ord", "hex", "oct", "bin"
+            ],
+            _ => vec![]
+        };
+        
+        keywords.into_iter().map(String::from).collect()
+    }
+
+    /// Sanitize an identifier for a specific language
+    ///
+    /// This method handles reserved keywords and invalid characters to ensure
+    /// the resulting identifier is valid in the target language.
+    ///
+    /// # Arguments
+    /// * `input` - The identifier to sanitize
+    /// * `language` - The target language
+    ///
+    /// # Returns
+    /// * `String` - A sanitized identifier that's safe to use
+    pub fn sanitize_identifier_for_language(input: &str, language: &str) -> String {
+        let keywords = Self::get_reserved_keywords(language);
+        Self::sanitize_identifier(input, &keywords)
+    }
+
+    /// Convert field name to appropriate naming convention for the language
+    ///
+    /// This method automatically applies the correct naming convention based on
+    /// the target language and sanitizes the result.
+    ///
+    /// # Arguments
+    /// * `input` - The field name to convert
+    /// * `language` - The target language
+    ///
+    /// # Returns
+    /// * `String` - The converted and sanitized field name
+    pub fn convert_field_name(input: &str, language: &str) -> String {
+        // First clean the input to handle special characters
+        let cleaned = if Self::has_special_characters(input) {
+            Self::clean_string(input)
+        } else {
+            input.to_string()
+        };
+        
+        let converted = match language {
+            "go" | "typescript" => Self::to_pascal_case(&cleaned),
+            "rust" | "python" => Self::to_snake_case(&cleaned),
+            _ => cleaned,
+        };
+        
+        Self::sanitize_identifier_for_language(&converted, language)
+    }
+
+    /// Convert type name to appropriate naming convention for the language
+    ///
+    /// This method automatically applies the correct naming convention for type names
+    /// based on the target language and sanitizes the result.
+    ///
+    /// # Arguments
+    /// * `input` - The type name to convert
+    /// * `language` - The target language
+    ///
+    /// # Returns
+    /// * `String` - The converted and sanitized type name
+    pub fn convert_type_name(input: &str, language: &str) -> String {
+        // First clean the input to handle special characters
+        let cleaned = if Self::has_special_characters(input) {
+            Self::clean_string(input)
+        } else {
+            input.to_string()
+        };
+        
+        let converted = match language {
+            "go" | "rust" | "typescript" | "python" => Self::to_pascal_case(&cleaned),
+            _ => cleaned,
+        };
+        
+        Self::sanitize_identifier_for_language(&converted, language)
+    }
+
+    /// Check if a string contains special characters that need handling
+    ///
+    /// # Arguments
+    /// * `input` - The string to check
+    ///
+    /// # Returns
+    /// * `bool` - True if the string contains special characters
+    pub fn has_special_characters(input: &str) -> bool {
+        input.chars().any(|c| !c.is_alphanumeric() && c != '_')
+    }
+
+    /// Clean a string by removing or replacing problematic characters
+    ///
+    /// # Arguments
+    /// * `input` - The string to clean
+    ///
+    /// # Returns
+    /// * `String` - The cleaned string
+    pub fn clean_string(input: &str) -> String {
+        input
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '_' {
+                    c
+                } else if c == '-' || c == ' ' || c == '.' {
+                    '_'
+                } else {
+                    '_'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('_')
+            .to_string()
+    }
     /// Convert a string to PascalCase (UpperCamelCase)
     ///
     /// This is commonly used for type names in Go, TypeScript, and other languages.
@@ -165,13 +331,21 @@ impl NameConverter {
             }
         }
 
+        // Clean up multiple underscores but preserve leading underscore if needed
+        while sanitized.contains("__") {
+            sanitized = sanitized.replace("__", "_");
+        }
+        
+        // Only trim trailing underscores, preserve leading underscore for numeric starts
+        sanitized = sanitized.trim_end_matches('_').to_string();
+
         // Handle reserved keywords
         if keywords.contains(&sanitized.to_lowercase()) {
             sanitized.push('_');
         }
 
-        // Ensure we don't have an empty result
-        if sanitized.is_empty() {
+        // Ensure we don't have an empty result or just underscores
+        if sanitized.is_empty() || sanitized.chars().all(|c| c == '_') {
             sanitized = "field".to_string();
         }
 
@@ -353,5 +527,169 @@ mod tests {
         assert_eq!(escape_comment_string("text\rwith\rcarriage"), "text with carriage");
         assert_eq!(escape_comment_string("  spaced text  "), "spaced text");
         assert_eq!(escape_comment_string(""), "");
+    }
+
+    #[test]
+    fn test_get_reserved_keywords() {
+        let go_keywords = NameConverter::get_reserved_keywords("go");
+        assert!(go_keywords.contains("struct"));
+        assert!(go_keywords.contains("type"));
+        assert!(go_keywords.contains("func"));
+        assert!(!go_keywords.contains("random_word"));
+
+        let rust_keywords = NameConverter::get_reserved_keywords("rust");
+        assert!(rust_keywords.contains("struct"));
+        assert!(rust_keywords.contains("impl"));
+        assert!(rust_keywords.contains("fn"));
+
+        let ts_keywords = NameConverter::get_reserved_keywords("typescript");
+        assert!(ts_keywords.contains("interface"));
+        assert!(ts_keywords.contains("type"));
+        assert!(ts_keywords.contains("class"));
+
+        let py_keywords = NameConverter::get_reserved_keywords("python");
+        assert!(py_keywords.contains("class"));
+        assert!(py_keywords.contains("def"));
+        assert!(py_keywords.contains("import"));
+
+        let unknown_keywords = NameConverter::get_reserved_keywords("unknown");
+        assert!(unknown_keywords.is_empty());
+    }
+
+    #[test]
+    fn test_sanitize_identifier_for_language() {
+        // Test Go keywords
+        assert_eq!(NameConverter::sanitize_identifier_for_language("struct", "go"), "struct_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("type", "go"), "type_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("valid", "go"), "valid");
+
+        // Test Rust keywords
+        assert_eq!(NameConverter::sanitize_identifier_for_language("impl", "rust"), "impl_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("fn", "rust"), "fn_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("valid", "rust"), "valid");
+
+        // Test TypeScript keywords
+        assert_eq!(NameConverter::sanitize_identifier_for_language("interface", "typescript"), "interface_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("class", "typescript"), "class_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("valid", "typescript"), "valid");
+
+        // Test Python keywords
+        assert_eq!(NameConverter::sanitize_identifier_for_language("class", "python"), "class_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("def", "python"), "def_");
+        assert_eq!(NameConverter::sanitize_identifier_for_language("valid", "python"), "valid");
+    }
+
+    #[test]
+    fn test_convert_field_name() {
+        // Test Go (PascalCase)
+        assert_eq!(NameConverter::convert_field_name("user_name", "go"), "UserName");
+        assert_eq!(NameConverter::convert_field_name("api_key", "go"), "ApiKey");
+        assert_eq!(NameConverter::convert_field_name("type", "go"), "Type_"); // Reserved keyword
+
+        // Test Rust (snake_case)
+        assert_eq!(NameConverter::convert_field_name("UserName", "rust"), "user_name");
+        assert_eq!(NameConverter::convert_field_name("APIKey", "rust"), "api_key");
+        assert_eq!(NameConverter::convert_field_name("impl", "rust"), "impl_"); // Reserved keyword
+
+        // Test TypeScript (PascalCase)
+        assert_eq!(NameConverter::convert_field_name("user_name", "typescript"), "UserName");
+        assert_eq!(NameConverter::convert_field_name("api_key", "typescript"), "ApiKey");
+        assert_eq!(NameConverter::convert_field_name("class", "typescript"), "Class_"); // Reserved keyword
+
+        // Test Python (snake_case)
+        assert_eq!(NameConverter::convert_field_name("UserName", "python"), "user_name");
+        assert_eq!(NameConverter::convert_field_name("APIKey", "python"), "api_key");
+        assert_eq!(NameConverter::convert_field_name("class", "python"), "class_"); // Reserved keyword
+    }
+
+    #[test]
+    fn test_convert_type_name() {
+        // All languages use PascalCase for type names
+        assert_eq!(NameConverter::convert_type_name("user_data", "go"), "UserData");
+        assert_eq!(NameConverter::convert_type_name("user_data", "rust"), "UserData");
+        assert_eq!(NameConverter::convert_type_name("user_data", "typescript"), "UserData");
+        assert_eq!(NameConverter::convert_type_name("user_data", "python"), "UserData");
+
+        // Test with reserved keywords
+        assert_eq!(NameConverter::convert_type_name("type", "go"), "Type_");
+        assert_eq!(NameConverter::convert_type_name("struct", "rust"), "Struct_");
+        assert_eq!(NameConverter::convert_type_name("interface", "typescript"), "Interface_");
+        assert_eq!(NameConverter::convert_type_name("class", "python"), "Class_");
+    }
+
+    #[test]
+    fn test_has_special_characters() {
+        assert!(!NameConverter::has_special_characters("simple"));
+        assert!(!NameConverter::has_special_characters("user_name"));
+        assert!(!NameConverter::has_special_characters("UserName123"));
+        
+        assert!(NameConverter::has_special_characters("user-name"));
+        assert!(NameConverter::has_special_characters("user name"));
+        assert!(NameConverter::has_special_characters("user.name"));
+        assert!(NameConverter::has_special_characters("user@name"));
+        assert!(NameConverter::has_special_characters("user#name"));
+    }
+
+    #[test]
+    fn test_clean_string() {
+        assert_eq!(NameConverter::clean_string("simple"), "simple");
+        assert_eq!(NameConverter::clean_string("user_name"), "user_name");
+        assert_eq!(NameConverter::clean_string("user-name"), "user_name");
+        assert_eq!(NameConverter::clean_string("user name"), "user_name");
+        assert_eq!(NameConverter::clean_string("user.name"), "user_name");
+        assert_eq!(NameConverter::clean_string("user@name#test"), "user_name_test");
+        assert_eq!(NameConverter::clean_string("_leading_underscore_"), "leading_underscore");
+        assert_eq!(NameConverter::clean_string("123numbers"), "123numbers");
+        assert_eq!(NameConverter::clean_string(""), "");
+    }
+
+    #[test]
+    fn test_complex_naming_scenarios() {
+        // Test complex field names with special characters and keywords
+        assert_eq!(
+            NameConverter::convert_field_name("user-profile.data", "go"),
+            "UserProfileData"
+        );
+        assert_eq!(
+            NameConverter::convert_field_name("api@key#value", "rust"),
+            "api_key_value"
+        );
+        assert_eq!(
+            NameConverter::convert_field_name("class-name", "typescript"),
+            "ClassName"
+        );
+        assert_eq!(
+            NameConverter::convert_field_name("def-value", "python"),
+            "def_value"
+        );
+
+        // Test type names with complex inputs
+        assert_eq!(
+            NameConverter::convert_type_name("user-profile.data", "go"),
+            "UserProfileData"
+        );
+        assert_eq!(
+            NameConverter::convert_type_name("api@response#data", "rust"),
+            "ApiResponseData"
+        );
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // Empty strings
+        assert_eq!(NameConverter::convert_field_name("", "go"), "field");
+        assert_eq!(NameConverter::convert_type_name("", "rust"), "field");
+
+        // Only special characters
+        assert_eq!(NameConverter::convert_field_name("@#$", "go"), "field");
+        assert_eq!(NameConverter::convert_type_name("@#$", "rust"), "field");
+
+        // Numbers at start
+        assert_eq!(NameConverter::convert_field_name("123test", "go"), "_123test");
+        assert_eq!(NameConverter::convert_type_name("123test", "rust"), "_123test");
+
+        // Mixed case with numbers
+        assert_eq!(NameConverter::convert_field_name("user123Name", "rust"), "user123_name");
+        assert_eq!(NameConverter::convert_field_name("API2Key", "rust"), "api2_key");
     }
 }
