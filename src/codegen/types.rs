@@ -318,9 +318,8 @@ impl JsonToIrConverter {
         value: &Value,
         nested_structs: &mut Vec<StructDefinition>,
     ) -> crate::error::Result<FieldDefinition> {
-        let json_type = self.type_mapper.infer_json_type(value);
         let is_optional = value.is_null();
-        let (field_type, is_array) = self.process_json_type(&json_type, field_name, nested_structs)?;
+        let (field_type, is_array) = self.process_json_type_with_value(value, field_name, nested_structs)?;
 
         let code_name = self.convert_field_name(field_name);
         
@@ -358,102 +357,59 @@ impl JsonToIrConverter {
         }
     }
 
+    /// Process JsonType and handle nested structures, creating actual nested struct definitions
+    fn process_json_type_with_value(
+        &mut self,
+        json_value: &Value,
+        field_name: &str,
+        nested_structs: &mut Vec<StructDefinition>,
+    ) -> crate::error::Result<(FieldType, bool)> {
+        match json_value {
+            Value::Array(arr) => {
+                if arr.is_empty() {
+                    Ok((FieldType::Any, true))
+                } else {
+                    // Process first element to determine array element type
+                    let (inner_type, _) = self.process_json_type_with_value(&arr[0], field_name, nested_structs)?;
+                    Ok((inner_type, true))
+                }
+            }
+            Value::Object(_) => {
+                // Generate a name for the nested struct based on the field name
+                let nested_struct_name = self.generate_nested_struct_name(field_name);
+                
+                // Create the nested struct definition
+                let nested_struct = self.convert_object_to_struct(json_value, &nested_struct_name)?;
+                nested_structs.push(nested_struct);
+                
+                Ok((FieldType::Custom(nested_struct_name), false))
+            }
+            Value::String(_) => Ok((FieldType::String, false)),
+            Value::Number(n) => {
+                if n.is_i64() || n.is_u64() {
+                    Ok((FieldType::Integer, false))
+                } else {
+                    Ok((FieldType::Number, false))
+                }
+            }
+            Value::Bool(_) => Ok((FieldType::Boolean, false)),
+            Value::Null => Ok((FieldType::Any, false)),
+        }
+    }
+
     /// Generate a name for a nested struct based on the field name
     fn generate_nested_struct_name(&self, field_name: &str) -> String {
-        // Convert field name to appropriate struct name format
-        let base_name = self.convert_field_name(field_name);
-        
-        // Ensure it starts with uppercase for struct naming conventions
-        if base_name.is_empty() {
-            "NestedStruct".to_string()
-        } else {
-            let mut chars = base_name.chars();
-            match chars.next() {
-                None => "NestedStruct".to_string(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            }
-        }
+        use crate::codegen::utils::NameConverter;
+        NameConverter::convert_type_name(field_name, self.type_mapper.language())
     }
 
     /// Convert field name to appropriate code name based on language conventions
     fn convert_field_name(&self, field_name: &str) -> String {
-        match self.type_mapper.language() {
-            "go" | "typescript" => {
-                // PascalCase for Go structs and TypeScript interfaces
-                self.to_pascal_case(field_name)
-            }
-            "rust" | "python" => {
-                // snake_case for Rust and Python
-                self.to_snake_case(field_name)
-            }
-            _ => field_name.to_string(),
-        }
+        use crate::codegen::utils::NameConverter;
+        NameConverter::convert_field_name(field_name, self.type_mapper.language())
     }
 
-    /// Convert string to PascalCase
-    fn to_pascal_case(&self, input: &str) -> String {
-        let mut result = String::new();
-        let mut capitalize_next = true;
-        let mut prev_was_lower = false;
-        
-        for c in input.chars() {
-            if c.is_alphanumeric() {
-                if capitalize_next || (c.is_uppercase() && prev_was_lower) {
-                    result.push(c.to_uppercase().next().unwrap_or(c));
-                    capitalize_next = false;
-                } else {
-                    result.push(c.to_lowercase().next().unwrap_or(c));
-                }
-                prev_was_lower = c.is_lowercase();
-            } else {
-                capitalize_next = true;
-                prev_was_lower = false;
-            }
-        }
-        
-        result
-    }
 
-    /// Convert string to snake_case
-    fn to_snake_case(&self, input: &str) -> String {
-        let mut result = String::new();
-        let mut prev_was_lower = false;
-        let mut prev_was_digit = false;
-
-        for (i, c) in input.chars().enumerate() {
-            if c.is_uppercase() {
-                // Add underscore before uppercase if previous was lowercase or digit
-                if i > 0 && (prev_was_lower || prev_was_digit) && !result.ends_with('_') {
-                    result.push('_');
-                }
-                result.push(c.to_lowercase().next().unwrap_or(c));
-                prev_was_lower = false;
-                prev_was_digit = false;
-            } else if c.is_ascii_digit() {
-                // Add underscore before digit if previous was letter
-                if i > 0 && prev_was_lower && !result.ends_with('_') {
-                    result.push('_');
-                }
-                result.push(c);
-                prev_was_lower = false;
-                prev_was_digit = true;
-            } else if c.is_ascii_lowercase() {
-                result.push(c);
-                prev_was_lower = true;
-                prev_was_digit = false;
-            } else {
-                // Non-alphanumeric character, replace with underscore
-                if !result.ends_with('_') && !result.is_empty() {
-                    result.push('_');
-                }
-                prev_was_lower = false;
-                prev_was_digit = false;
-            }
-        }
-
-        // Clean up trailing underscores
-        result.trim_end_matches('_').to_string()
-    }
 
     /// Process nested objects and create struct definitions
     pub fn process_nested_objects(
@@ -1175,27 +1131,27 @@ mod tests {
 
     #[test]
     fn test_pascal_case_conversion() {
-        let converter = JsonToIrConverter::new("go");
+        use crate::codegen::utils::NameConverter;
         
-        assert_eq!(converter.to_pascal_case("user_name"), "UserName");
-        assert_eq!(converter.to_pascal_case("first-name"), "FirstName");
-        assert_eq!(converter.to_pascal_case("lastName"), "LastName");
-        assert_eq!(converter.to_pascal_case("email"), "Email");
-        assert_eq!(converter.to_pascal_case("API_KEY"), "ApiKey");
-        assert_eq!(converter.to_pascal_case("user123name"), "User123name");
+        assert_eq!(NameConverter::to_pascal_case("user_name"), "UserName");
+        assert_eq!(NameConverter::to_pascal_case("first-name"), "FirstName");
+        assert_eq!(NameConverter::to_pascal_case("lastName"), "LastName");
+        assert_eq!(NameConverter::to_pascal_case("email"), "Email");
+        assert_eq!(NameConverter::to_pascal_case("API_KEY"), "ApiKey");
+        assert_eq!(NameConverter::to_pascal_case("user123name"), "User123name");
     }
 
     #[test]
     fn test_snake_case_conversion() {
-        let converter = JsonToIrConverter::new("rust");
+        use crate::codegen::utils::NameConverter;
         
-        assert_eq!(converter.to_snake_case("UserName"), "user_name");
-        assert_eq!(converter.to_snake_case("firstName"), "first_name");
-        assert_eq!(converter.to_snake_case("LastName"), "last_name");
-        assert_eq!(converter.to_snake_case("email"), "email");
-        assert_eq!(converter.to_snake_case("APIKey"), "apikey");
-        assert_eq!(converter.to_snake_case("user123Name"), "user_123_name");
-        assert_eq!(converter.to_snake_case("XMLHttpRequest"), "xmlhttp_request");
+        assert_eq!(NameConverter::to_snake_case("UserName"), "user_name");
+        assert_eq!(NameConverter::to_snake_case("firstName"), "first_name");
+        assert_eq!(NameConverter::to_snake_case("LastName"), "last_name");
+        assert_eq!(NameConverter::to_snake_case("email"), "email");
+        assert_eq!(NameConverter::to_snake_case("APIKey"), "api_key");
+        assert_eq!(NameConverter::to_snake_case("user123Name"), "user123_name");
+        assert_eq!(NameConverter::to_snake_case("XMLHttpRequest"), "xml_http_request");
     }
 
     #[test]

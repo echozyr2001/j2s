@@ -7,7 +7,7 @@
 use crate::codegen::generator::{CodeGenerator, GenerationOptions};
 use crate::codegen::types::{FieldDefinition, FieldType, StructDefinition};
 use crate::codegen::utils::NameConverter;
-use crate::error::{J2sError, Result};
+use crate::error::Result;
 use serde_json::Value;
 use std::collections::HashSet;
 
@@ -67,12 +67,12 @@ impl PythonGenerator {
 
         // Handle arrays
         if is_array {
-            result = format!("List[{}]", result);
+            result = format!("List[{result}]");
         }
 
         // Handle optional fields with Optional[T]
         if is_optional {
-            result = format!("Optional[{}]", result);
+            result = format!("Optional[{result}]");
         }
 
         result
@@ -80,22 +80,22 @@ impl PythonGenerator {
 
     /// Generate a Python dataclass field declaration
     fn generate_field(&self, field: &FieldDefinition) -> String {
-        let field_name = NameConverter::to_snake_case(&field.code_name);
-        let sanitized_name = NameConverter::sanitize_identifier(&field_name, &self.keywords);
+        // The code_name is already converted to the proper case by JsonToIrConverter
+        let sanitized_name = NameConverter::sanitize_identifier(&field.code_name, &self.keywords);
         
         let field_type = self.map_field_type(&field.field_type, field.is_optional, field.is_array);
         
         // Add comments if present
         let mut result = String::new();
         for comment in &field.comments {
-            result.push_str(&format!("    # {}\n", comment));
+            result.push_str(&format!("    # {comment}\n"));
         }
 
         // Generate field with type annotation
         if field.is_optional {
-            result.push_str(&format!("    {}: {} = None", sanitized_name, field_type));
+            result.push_str(&format!("    {sanitized_name}: {field_type} = None"));
         } else {
-            result.push_str(&format!("    {}: {}", sanitized_name, field_type));
+            result.push_str(&format!("    {sanitized_name}: {field_type}"));
         }
 
         result
@@ -108,24 +108,47 @@ impl PythonGenerator {
 
         let mut result = String::new();
 
-        // Add class comments as docstring
+        // Add dataclass decorator
+        result.push_str("@dataclass\n");
+        result.push_str(&format!("class {sanitized_name}:\n"));
+
+        // Add class docstring
+        result.push_str("    \"\"\"\n");
         if !struct_def.comments.is_empty() {
-            result.push_str(&format!("@dataclass\nclass {}:\n", sanitized_name));
-            result.push_str("    \"\"\"\n");
             for comment in &struct_def.comments {
-                result.push_str(&format!("    {}\n", comment));
+                result.push_str(&format!("    {comment}\n"));
             }
-            result.push_str("    \"\"\"\n");
         } else {
-            result.push_str(&format!("@dataclass\nclass {}:\n", sanitized_name));
+            result.push_str(&format!("    {sanitized_name} dataclass.\n"));
+            result.push_str("    \n");
+            result.push_str("    Auto-generated from JSON data.\n");
         }
+
+        // Add field documentation to docstring if fields exist
+        if !struct_def.fields.is_empty() {
+            result.push_str("    \n");
+            result.push_str("    Attributes:\n");
+            for field in &struct_def.fields {
+                let field_name = NameConverter::sanitize_identifier(&field.code_name, &self.keywords);
+                let field_type = self.map_field_type(&field.field_type, field.is_optional, field.is_array);
+                result.push_str(&format!("        {field_name} ({field_type}): "));
+                
+                if !field.comments.is_empty() {
+                    result.push_str(&field.comments.join(" "));
+                } else {
+                    result.push_str(&format!("Field from JSON key '{}'", field.json_name));
+                }
+                result.push('\n');
+            }
+        }
+        result.push_str("    \"\"\"\n");
 
         // Add fields
         if struct_def.fields.is_empty() {
             result.push_str("    pass\n");
         } else {
             for field in &struct_def.fields {
-                result.push_str(&self.generate_field(field));
+                result.push_str(&self.generate_field_with_default(field));
                 result.push('\n');
             }
         }
@@ -140,21 +163,15 @@ impl PythonGenerator {
         let mut has_list = false;
         let mut has_any = false;
 
-        // Check what types are used to determine imports
-        for field in &struct_def.fields {
-            if field.is_optional {
-                has_optional = true;
-            }
-            if field.is_array {
-                has_list = true;
-            }
-            if matches!(field.field_type, FieldType::Any) {
-                has_any = true;
-            }
-        }
+        // Check what types are used to determine imports (including nested structs)
+        self.check_types_recursive(struct_def, &mut has_optional, &mut has_list, &mut has_any);
 
         // Add dataclass import
-        imports.push("from dataclasses import dataclass".to_string());
+        if self.needs_field_import(struct_def) {
+            imports.push("from dataclasses import dataclass, field".to_string());
+        } else {
+            imports.push("from dataclasses import dataclass".to_string());
+        }
 
         // Add typing imports
         let mut typing_imports = Vec::new();
@@ -174,6 +191,93 @@ impl PythonGenerator {
 
         imports.join("\n") + "\n\n"
     }
+
+    /// Generate file header with generation information and module docstring
+    fn generate_file_header(&self, struct_name: &str) -> String {
+        use crate::codegen::utils::generate_timestamp;
+        
+        let timestamp = generate_timestamp();
+        format!(
+            "\"\"\"
+Generated Python dataclasses from JSON data.
+
+This module contains dataclass definitions automatically generated from JSON data
+using the j2s (JSON to Struct) tool.
+
+Generated at: {timestamp}
+Main class: {struct_name}
+
+DO NOT EDIT - This file was automatically generated.
+\"\"\"
+
+"
+        )
+    }
+
+    /// Recursively check types in struct and nested structs
+    fn check_types_recursive(&self, struct_def: &StructDefinition, has_optional: &mut bool, has_list: &mut bool, has_any: &mut bool) {
+        // Check fields in current struct
+        for field in &struct_def.fields {
+            if field.is_optional {
+                *has_optional = true;
+            }
+            if field.is_array {
+                *has_list = true;
+            }
+            if matches!(field.field_type, FieldType::Any) {
+                *has_any = true;
+            }
+        }
+
+        // Check nested structs
+        for nested in &struct_def.nested_structs {
+            self.check_types_recursive(nested, has_optional, has_list, has_any);
+        }
+    }
+
+    /// Generate a Python-style field with proper type annotation and default value
+    fn generate_field_with_default(&self, field: &FieldDefinition) -> String {
+        let sanitized_name = NameConverter::sanitize_identifier(&field.code_name, &self.keywords);
+        let field_type = self.map_field_type(&field.field_type, field.is_optional, field.is_array);
+        
+        let mut result = String::new();
+        
+        // Add inline comments if present
+        for comment in &field.comments {
+            result.push_str(&format!("    # {comment}\n"));
+        }
+
+        // Generate field with type annotation and appropriate default
+        if field.is_optional {
+            result.push_str(&format!("    {sanitized_name}: {field_type} = None"));
+        } else if field.is_array {
+            // For non-optional arrays, use field(default_factory=list) to avoid mutable defaults
+            result.push_str(&format!("    {sanitized_name}: {field_type} = field(default_factory=list)"));
+        } else {
+            result.push_str(&format!("    {sanitized_name}: {field_type}"));
+        }
+
+        result
+    }
+
+    /// Check if we need to import field from dataclasses
+    fn needs_field_import(&self, struct_def: &StructDefinition) -> bool {
+        // Check if any non-optional array fields exist (they need field(default_factory=list))
+        for field in &struct_def.fields {
+            if field.is_array && !field.is_optional {
+                return true;
+            }
+        }
+        
+        // Check nested structs
+        for nested in &struct_def.nested_structs {
+            if self.needs_field_import(nested) {
+                return true;
+            }
+        }
+        
+        false
+    }
 }
 
 impl Default for PythonGenerator {
@@ -183,12 +287,40 @@ impl Default for PythonGenerator {
 }
 
 impl CodeGenerator for PythonGenerator {
-    fn generate(&self, _json_value: &Value, _options: &GenerationOptions) -> Result<String> {
-        // This is a stub implementation for now
-        // The actual implementation will be done in a later task
-        Err(J2sError::codegen_error(
-            "Python code generation not yet implemented. This will be implemented in task 7.1".to_string()
-        ))
+    fn generate(&self, json_value: &Value, options: &GenerationOptions) -> Result<String> {
+        use crate::codegen::types::JsonToIrConverter;
+        
+        // Create converter for Python language
+        let mut converter = JsonToIrConverter::new("python");
+        
+        // Determine struct name
+        let struct_name = options.get_struct_name("GeneratedClass");
+        let sanitized_struct_name = NameConverter::convert_type_name(&struct_name, "python");
+        
+        // Convert JSON to intermediate representation
+        let struct_def = converter.convert_to_struct(json_value, &sanitized_struct_name)?;
+        
+        // Generate Python code
+        let mut result = String::new();
+        
+        // Add file header comment if comments are enabled
+        if options.include_comments {
+            result.push_str(&self.generate_file_header(&sanitized_struct_name));
+        }
+        
+        // Generate imports
+        result.push_str(&self.generate_imports(&struct_def));
+        
+        // Generate nested classes first
+        for nested_struct in &struct_def.nested_structs {
+            result.push_str(&self.generate_dataclass(nested_struct));
+            result.push('\n');
+        }
+        
+        // Generate main class
+        result.push_str(&self.generate_dataclass(&struct_def));
+        
+        Ok(result)
     }
 
     fn file_extension(&self) -> &'static str {
@@ -347,5 +479,264 @@ mod tests {
         let options = GenerationOptions::default();
         
         assert!(generator.validate_options(&options).is_ok());
+    }
+
+    #[test]
+    fn test_generate_simple_dataclass() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe",
+            "age": 30,
+            "is_active": true
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User")
+            .with_comments(true);
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("from dataclasses import dataclass"));
+        assert!(code.contains("@dataclass"));
+        assert!(code.contains("class User:"));
+        assert!(code.contains("name: str"));
+        assert!(code.contains("age: int"));
+        assert!(code.contains("is_active: bool"));
+        assert!(code.contains("Generated Python dataclasses from JSON data"));
+    }
+
+    #[test]
+    fn test_generate_with_optional_fields() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe",
+            "email": null,
+            "age": 30
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User")
+            .with_optional_fields(true);
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("from typing import Optional"));
+        assert!(code.contains("name: str"));
+        assert!(code.contains("age: int"));
+        // Email should be optional since it was null in JSON
+        assert!(code.contains("email: Optional["));
+        assert!(code.contains("= None"));
+    }
+
+    #[test]
+    fn test_generate_with_arrays() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe",
+            "tags": ["developer", "python", "rust"],
+            "scores": [95, 87, 92]
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User");
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("from typing import List"));
+        assert!(code.contains("tags: List[str]"));
+        assert!(code.contains("scores: List[int]"));
+    }
+
+    #[test]
+    fn test_generate_with_nested_objects() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe",
+            "address": {
+                "street": "123 Main St",
+                "city": "Anytown",
+                "zip_code": 12345
+            }
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User");
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("@dataclass"));
+        assert!(code.contains("class Address:"));
+        assert!(code.contains("class User:"));
+        assert!(code.contains("address: Address"));
+        assert!(code.contains("street: str"));
+        assert!(code.contains("city: str"));
+        assert!(code.contains("zip_code: int"));
+    }
+
+    #[test]
+    fn test_generate_without_comments() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe"
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User")
+            .with_comments(false);
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(!code.contains("Generated Python dataclasses from JSON data"));
+        assert!(code.contains("@dataclass"));
+        assert!(code.contains("class User:"));
+        assert!(code.contains("name: str"));
+    }
+
+    #[test]
+    fn test_generate_with_array_default_factory() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "name": "John Doe",
+            "tags": ["developer", "python"]
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User");
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("from dataclasses import dataclass, field"));
+        assert!(code.contains("tags: List[str] = field(default_factory=list)"));
+    }
+
+    #[test]
+    fn test_generate_enhanced_docstrings() {
+        use serde_json::json;
+        
+        let generator = PythonGenerator::new();
+        let json_data = json!({
+            "user_id": 123,
+            "email": "test@example.com"
+        });
+        
+        let options = GenerationOptions::default()
+            .with_struct_name("User")
+            .with_comments(true);
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        assert!(code.contains("User dataclass."));
+        assert!(code.contains("Auto-generated from JSON data."));
+        assert!(code.contains("Attributes:"));
+        assert!(code.contains("user_id (int): Field from JSON key 'user_id'"));
+        assert!(code.contains("email (str): Field from JSON key 'email'"));
+    }
+
+    #[test]
+    fn test_file_header_generation() {
+        let generator = PythonGenerator::new();
+        let header = generator.generate_file_header("TestClass");
+        
+        assert!(header.contains("Generated Python dataclasses from JSON data"));
+        assert!(header.contains("Main class: TestClass"));
+        assert!(header.contains("DO NOT EDIT"));
+        assert!(header.starts_with("\"\"\""));
+        assert!(header.ends_with("\"\"\"\n\n"));
+    }
+
+    #[test]
+    fn test_needs_field_import() {
+        let generator = PythonGenerator::new();
+        
+        // Test with array field (should need field import)
+        let field1 = FieldDefinition::new("tags", "tags", FieldType::String).array(true);
+        let struct_def1 = StructDefinition::new("User").add_field(field1);
+        assert!(generator.needs_field_import(&struct_def1));
+        
+        // Test with optional array field (should not need field import)
+        let field2 = FieldDefinition::new("tags", "tags", FieldType::String)
+            .array(true)
+            .optional(true);
+        let struct_def2 = StructDefinition::new("User").add_field(field2);
+        assert!(!generator.needs_field_import(&struct_def2));
+        
+        // Test with regular fields (should not need field import)
+        let field3 = FieldDefinition::new("name", "name", FieldType::String);
+        let struct_def3 = StructDefinition::new("User").add_field(field3);
+        assert!(!generator.needs_field_import(&struct_def3));
+    }
+
+    #[test]
+    fn test_complex_python_generation() {
+        use serde_json::json;
+        
+        let json_data = json!({
+            "user_id": 123,
+            "name": "John Doe", 
+            "email": "john@example.com",
+            "is_active": true,
+            "tags": ["developer", "python", "rust"],
+            "profile": {
+                "bio": "Software developer",
+                "location": "San Francisco", 
+                "website": null
+            },
+            "scores": [95, 87, 92]
+        });
+        
+        let generator = PythonGenerator::new();
+        let options = GenerationOptions::default()
+            .with_struct_name("User")
+            .with_comments(true);
+        
+        let result = generator.generate(&json_data, &options);
+        assert!(result.is_ok());
+        
+        let code = result.unwrap();
+        
+        // Verify the generated code contains expected elements
+        assert!(code.contains("from dataclasses import dataclass, field"));
+        assert!(code.contains("from typing import Optional, List"));
+        assert!(code.contains("class Profile:"));
+        assert!(code.contains("class User:"));
+        assert!(code.contains("user_id: int"));
+        assert!(code.contains("name: str"));
+        assert!(code.contains("email: str"));
+        assert!(code.contains("is_active: bool"));
+        assert!(code.contains("tags: List[str] = field(default_factory=list)"));
+        assert!(code.contains("profile: Profile"));
+        assert!(code.contains("scores: List[int] = field(default_factory=list)"));
+        // The website field should be optional since it was null in JSON
+        assert!(code.contains("website: Optional["));
+        assert!(code.contains("= None"));
+        
+        // Print the generated code for manual inspection
+        println!("Generated Python code:\n{}", code);
     }
 }

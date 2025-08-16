@@ -110,7 +110,8 @@ impl NameConverter {
         };
         
         let converted = match language {
-            "go" | "typescript" => Self::to_pascal_case(&cleaned),
+            "go" => Self::to_pascal_case(&cleaned),
+            "typescript" => Self::to_camel_case(&cleaned),
             "rust" | "python" => Self::to_snake_case(&cleaned),
             _ => cleaned,
         };
@@ -194,17 +195,49 @@ impl NameConverter {
             return String::new();
         }
 
-        input
+        // First, split on common separators
+        let parts: Vec<&str> = input
             .split(|c: char| c == '_' || c == '-' || c == ' ')
             .filter(|s| !s.is_empty())
-            .map(|word| {
-                let mut chars = word.chars();
-                match chars.next() {
-                    None => String::new(),
-                    Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+            .collect();
+
+        let mut result = String::new();
+        
+        for part in parts {
+            // For each part, handle camelCase by splitting on uppercase letters
+            let mut current_word = String::new();
+            let mut prev_was_lower = false;
+            
+            for c in part.chars() {
+                if c.is_uppercase() && prev_was_lower && !current_word.is_empty() {
+                    // Found a camelCase boundary, capitalize the current word and start a new one
+                    result.push_str(&Self::capitalize_word(&current_word));
+                    current_word.clear();
                 }
-            })
-            .collect()
+                current_word.push(c);
+                prev_was_lower = c.is_lowercase();
+            }
+            
+            // Add the final word
+            if !current_word.is_empty() {
+                result.push_str(&Self::capitalize_word(&current_word));
+            }
+        }
+        
+        result
+    }
+    
+    /// Helper function to capitalize a single word
+    fn capitalize_word(word: &str) -> String {
+        if word.is_empty() {
+            return String::new();
+        }
+        
+        let mut chars = word.chars();
+        match chars.next() {
+            None => String::new(),
+            Some(first) => first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase(),
+        }
     }
 
     /// Convert a string to camelCase
@@ -591,10 +624,10 @@ mod tests {
         assert_eq!(NameConverter::convert_field_name("APIKey", "rust"), "api_key");
         assert_eq!(NameConverter::convert_field_name("impl", "rust"), "impl_"); // Reserved keyword
 
-        // Test TypeScript (PascalCase)
-        assert_eq!(NameConverter::convert_field_name("user_name", "typescript"), "UserName");
-        assert_eq!(NameConverter::convert_field_name("api_key", "typescript"), "ApiKey");
-        assert_eq!(NameConverter::convert_field_name("class", "typescript"), "Class_"); // Reserved keyword
+        // Test TypeScript (camelCase)
+        assert_eq!(NameConverter::convert_field_name("user_name", "typescript"), "userName");
+        assert_eq!(NameConverter::convert_field_name("api_key", "typescript"), "apiKey");
+        assert_eq!(NameConverter::convert_field_name("class", "typescript"), "class_"); // Reserved keyword
 
         // Test Python (snake_case)
         assert_eq!(NameConverter::convert_field_name("UserName", "python"), "user_name");
@@ -656,7 +689,7 @@ mod tests {
         );
         assert_eq!(
             NameConverter::convert_field_name("class-name", "typescript"),
-            "ClassName"
+            "className"
         );
         assert_eq!(
             NameConverter::convert_field_name("def-value", "python"),
