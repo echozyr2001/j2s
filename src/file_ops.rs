@@ -308,6 +308,354 @@ pub fn generate_output_path(input_path: &str, output_path: Option<&str>) -> Stri
     }
 }
 
+/// Generate code output path based on input path, optional output path, and target format
+///
+/// This function creates appropriate output file paths for generated code files,
+/// handling different programming language file extensions and naming conventions.
+///
+/// # Arguments
+/// * `input_path` - Path to the input JSON file
+/// * `output_path` - Optional custom output path
+/// * `format` - Target format/language (go, rust, typescript, python, etc.)
+///
+/// # Returns
+/// * `String` - The generated output path with appropriate file extension
+///
+/// # Logic
+/// * If output_path is provided, use it as-is (assumes user knows what they want)
+/// * If not provided, generate path based on input filename and target format
+/// * Uses appropriate file extensions for each language
+/// * Preserves directory structure from input path
+///
+/// # Examples
+/// * `generate_code_output_path("data.json", None, "go")` → `"data.go"`
+/// * `generate_code_output_path("path/to/data.json", None, "rust")` → `"path/to/data.rs"`
+/// * `generate_code_output_path("data.json", Some("custom.ts"), "typescript")` → `"custom.ts"`
+pub fn generate_code_output_path(input_path: &str, output_path: Option<&str>, format: &str) -> String {
+    match output_path {
+        Some(path) => path.to_string(),
+        None => {
+            let input_path_buf = PathBuf::from(input_path);
+
+            // Get the file stem (filename without extension)
+            let file_stem = input_path_buf
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+
+            // Get the parent directory
+            let parent = input_path_buf.parent();
+
+            // Determine file extension based on format
+            let extension = get_file_extension_for_format(format);
+
+            // Create the output filename
+            let output_filename = format!("{file_stem}.{extension}");
+
+            // Combine with parent directory if it exists
+            match parent {
+                Some(parent_dir) if !parent_dir.as_os_str().is_empty() => parent_dir
+                    .join(output_filename)
+                    .to_string_lossy()
+                    .to_string(),
+                _ => output_filename,
+            }
+        }
+    }
+}
+
+/// Get the appropriate file extension for a given format/language
+///
+/// # Arguments
+/// * `format` - The target format/language identifier
+///
+/// # Returns
+/// * `&'static str` - The file extension (without the dot)
+///
+/// # Supported Formats
+/// * `"go"` → `"go"`
+/// * `"rust"` → `"rs"`
+/// * `"typescript"` → `"ts"`
+/// * `"python"` → `"py"`
+/// * `"schema"` → `"schema.json"`
+/// * Default → `"txt"`
+pub fn get_file_extension_for_format(format: &str) -> &'static str {
+    match format {
+        "go" => "go",
+        "rust" => "rs",
+        "typescript" => "ts",
+        "python" => "py",
+        "schema" => "schema.json",
+        _ => "txt", // Fallback for unknown formats
+    }
+}
+
+/// Write generated code content to a file with enhanced error reporting and validation
+///
+/// This function provides comprehensive error checking and safe file writing for generated code.
+/// It includes syntax validation hints, directory creation, and detailed error reporting
+/// specific to code generation workflows.
+///
+/// # Arguments
+/// * `path` - Path where the code file should be written
+/// * `content` - The generated code content to write
+/// * `format` - The target format/language for additional validation context
+///
+/// # Returns
+/// * `Result<()>` - Success or a detailed error
+///
+/// # Errors
+/// * Returns `J2sError::File` with specific error details for various failure scenarios:
+///   - Directory creation failures
+///   - Permission denied for writing
+///   - Content validation failures
+///   - File system errors
+///
+/// # Features
+/// * Creates parent directories if they don't exist
+/// * Validates that content is not empty
+/// * Provides format-specific warnings and suggestions
+/// * Verifies successful write operation
+/// * Includes helpful error messages for troubleshooting
+pub fn write_code_file(path: &str, content: &str, format: &str) -> Result<()> {
+    let file_path = Path::new(path);
+
+    // Validate content is not empty
+    if content.trim().is_empty() {
+        return Err(J2sError::file_error(format!(
+            "Cannot write empty code content to {path}\n   Generated code content is empty, this may indicate a code generation error"
+        )));
+    }
+
+    // Ensure the output directory exists
+    ensure_output_directory(path)?;
+
+    // Check if we're about to overwrite an existing file
+    if file_path.exists() {
+        eprintln!("⚠️  Warning: Overwriting existing {} file: {path}", format);
+    }
+
+    // Perform basic content validation based on format
+    validate_code_content(content, format, path)?;
+
+    // Write the content to the file
+    match fs::write(path, content) {
+        Ok(()) => {
+            // Verify the file was written successfully
+            match file_path.metadata() {
+                Ok(metadata) => {
+                    if metadata.len() == 0 {
+                        Err(J2sError::file_error(format!(
+                            "Code file was created but is empty: {path}\n   This may indicate a disk space or permission issue"
+                        )))
+                    } else if metadata.len() != content.len() as u64 {
+                        Err(J2sError::file_error(format!(
+                            "Code file size mismatch after writing: {path}\n   Expected {} bytes, got {} bytes\n   This may indicate encoding issues or disk problems",
+                            content.len(),
+                            metadata.len()
+                        )))
+                    } else {
+                        // Success - provide helpful feedback
+                        println!("✅ Generated {} code: {path} ({} bytes)", format, metadata.len());
+                        Ok(())
+                    }
+                }
+                Err(err) => Err(J2sError::file_error(format!(
+                    "Cannot verify written code file {path}: {err}\n   File may have been created but verification failed"
+                ))),
+            }
+        }
+        Err(err) => {
+            let error_msg = match err.kind() {
+                std::io::ErrorKind::PermissionDenied => {
+                    format!(
+                        "Permission denied writing {} code to {path}: {err}\n   Check that you have write permissions to this location",
+                        format
+                    )
+                }
+                std::io::ErrorKind::NotFound => {
+                    format!(
+                        "Directory not found for {} code file {path}: {err}\n   The parent directory may not exist or be accessible",
+                        format
+                    )
+                }
+                std::io::ErrorKind::WriteZero => {
+                    format!(
+                        "No space left on device for {} code file {path}: {err}\n   Check available disk space",
+                        format
+                    )
+                }
+                _ => {
+                    format!("Failed to write {} code file {path}: {err}", format)
+                }
+            };
+            Err(J2sError::file_error(error_msg))
+        }
+    }
+}
+
+/// Validate generated code content for basic correctness
+///
+/// This function performs basic validation of generated code content to catch
+/// obvious issues before writing to disk. It's not a full syntax checker but
+/// provides helpful early warnings.
+///
+/// # Arguments
+/// * `content` - The generated code content to validate
+/// * `format` - The target format/language
+/// * `path` - The output path (for error reporting)
+///
+/// # Returns
+/// * `Result<()>` - Success or validation error
+///
+/// # Validation Checks
+/// * Content is not empty or only whitespace
+/// * Basic format-specific syntax checks
+/// * Character encoding validation
+/// * Length reasonableness checks
+fn validate_code_content(content: &str, format: &str, path: &str) -> Result<()> {
+    // Check for empty content (already done in write_code_file, but double-check)
+    if content.trim().is_empty() {
+        return Err(J2sError::file_error(format!(
+            "Generated {} code content is empty for {path}", format
+        )));
+    }
+
+    // Check for reasonable content length (not too short, not too long)
+    if content.len() < 10 {
+        return Err(J2sError::file_error(format!(
+            "Generated {} code content seems too short ({} bytes) for {path}\n   This may indicate a code generation error",
+            format, content.len()
+        )));
+    }
+
+    if content.len() > 10_000_000 {
+        eprintln!(
+            "⚠️  Warning: Generated {} code is very large ({:.1} MB) for {path}",
+            format,
+            content.len() as f64 / 1_000_000.0
+        );
+    }
+
+    // Basic format-specific validation
+    match format {
+        "go" => validate_go_content(content, path)?,
+        "rust" => validate_rust_content(content, path)?,
+        "typescript" => validate_typescript_content(content, path)?,
+        "python" => validate_python_content(content, path)?,
+        _ => {
+            // For unknown formats, just check for valid UTF-8
+            if !content.is_ascii() && std::str::from_utf8(content.as_bytes()).is_err() {
+                return Err(J2sError::file_error(format!(
+                    "Generated code content contains invalid UTF-8 for {path}"
+                )));
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate Go code content for basic syntax issues
+fn validate_go_content(content: &str, path: &str) -> Result<()> {
+    // Check for package declaration
+    if !content.contains("package ") {
+        eprintln!("⚠️  Warning: Generated Go code in {path} may be missing package declaration");
+    }
+
+    // Check for balanced braces (basic check)
+    let open_braces = content.matches('{').count();
+    let close_braces = content.matches('}').count();
+    if open_braces != close_braces {
+        return Err(J2sError::file_error(format!(
+            "Generated Go code has unbalanced braces in {path}: {} open, {} close",
+            open_braces, close_braces
+        )));
+    }
+
+    Ok(())
+}
+
+/// Validate Rust code content for basic syntax issues
+fn validate_rust_content(content: &str, path: &str) -> Result<()> {
+    // Check for balanced braces
+    let open_braces = content.matches('{').count();
+    let close_braces = content.matches('}').count();
+    if open_braces != close_braces {
+        return Err(J2sError::file_error(format!(
+            "Generated Rust code has unbalanced braces in {path}: {} open, {} close",
+            open_braces, close_braces
+        )));
+    }
+
+    // Check for balanced parentheses
+    let open_parens = content.matches('(').count();
+    let close_parens = content.matches(')').count();
+    if open_parens != close_parens {
+        return Err(J2sError::file_error(format!(
+            "Generated Rust code has unbalanced parentheses in {path}: {} open, {} close",
+            open_parens, close_parens
+        )));
+    }
+
+    Ok(())
+}
+
+/// Validate TypeScript code content for basic syntax issues
+fn validate_typescript_content(content: &str, path: &str) -> Result<()> {
+    // Check for balanced braces
+    let open_braces = content.matches('{').count();
+    let close_braces = content.matches('}').count();
+    if open_braces != close_braces {
+        return Err(J2sError::file_error(format!(
+            "Generated TypeScript code has unbalanced braces in {path}: {} open, {} close",
+            open_braces, close_braces
+        )));
+    }
+
+    // Check for balanced parentheses
+    let open_parens = content.matches('(').count();
+    let close_parens = content.matches(')').count();
+    if open_parens != close_parens {
+        return Err(J2sError::file_error(format!(
+            "Generated TypeScript code has unbalanced parentheses in {path}: {} open, {} close",
+            open_parens, close_parens
+        )));
+    }
+
+    Ok(())
+}
+
+/// Validate Python code content for basic syntax issues
+fn validate_python_content(content: &str, path: &str) -> Result<()> {
+    // Check for balanced parentheses
+    let open_parens = content.matches('(').count();
+    let close_parens = content.matches(')').count();
+    if open_parens != close_parens {
+        return Err(J2sError::file_error(format!(
+            "Generated Python code has unbalanced parentheses in {path}: {} open, {} close",
+            open_parens, close_parens
+        )));
+    }
+
+    // Check for balanced square brackets
+    let open_brackets = content.matches('[').count();
+    let close_brackets = content.matches(']').count();
+    if open_brackets != close_brackets {
+        return Err(J2sError::file_error(format!(
+            "Generated Python code has unbalanced brackets in {path}: {} open, {} close",
+            open_brackets, close_brackets
+        )));
+    }
+
+    // Python-specific: check for reasonable indentation (should contain some spaces or tabs)
+    if !content.contains("    ") && !content.contains('\t') {
+        eprintln!("⚠️  Warning: Generated Python code in {path} may have indentation issues");
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,5 +850,318 @@ mod tests {
         assert!(Path::new(&output_path).exists());
         let written_content = fs::read_to_string(&output_path).unwrap();
         assert_eq!(written_content, schema_content);
+    }
+
+    // Tests for code generation file operations
+    #[test]
+    fn test_get_file_extension_for_format() {
+        assert_eq!(get_file_extension_for_format("go"), "go");
+        assert_eq!(get_file_extension_for_format("rust"), "rs");
+        assert_eq!(get_file_extension_for_format("typescript"), "ts");
+        assert_eq!(get_file_extension_for_format("python"), "py");
+        assert_eq!(get_file_extension_for_format("schema"), "schema.json");
+        assert_eq!(get_file_extension_for_format("unknown"), "txt");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_with_custom_output() {
+        let input = "input.json";
+        let custom_output = "custom/path/output.go";
+
+        let result = generate_code_output_path(input, Some(custom_output), "go");
+        assert_eq!(result, custom_output);
+    }
+
+    #[test]
+    fn test_generate_code_output_path_go() {
+        let input = "data.json";
+        let result = generate_code_output_path(input, None, "go");
+        assert_eq!(result, "data.go");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_rust() {
+        let input = "data.json";
+        let result = generate_code_output_path(input, None, "rust");
+        assert_eq!(result, "data.rs");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_typescript() {
+        let input = "data.json";
+        let result = generate_code_output_path(input, None, "typescript");
+        assert_eq!(result, "data.ts");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_python() {
+        let input = "data.json";
+        let result = generate_code_output_path(input, None, "python");
+        assert_eq!(result, "data.py");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_with_directory() {
+        let input = "path/to/data.json";
+        let result = generate_code_output_path(input, None, "go");
+        assert_eq!(result, "path/to/data.go");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_no_extension() {
+        let input = "data";
+        let result = generate_code_output_path(input, None, "rust");
+        assert_eq!(result, "data.rs");
+    }
+
+    #[test]
+    fn test_generate_code_output_path_different_extension() {
+        let input = "data.txt";
+        let result = generate_code_output_path(input, None, "typescript");
+        assert_eq!(result, "data.ts");
+    }
+
+    #[test]
+    fn test_write_code_file_success_go() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = r#"package main
+
+type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_ok());
+
+        // Verify the file was created and has correct content
+        let written_content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(written_content, content);
+    }
+
+    #[test]
+    fn test_write_code_file_success_rust() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.rs");
+        let content = r#"use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct User {
+    pub name: String,
+    pub age: i64,
+}"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "rust");
+        assert!(result.is_ok());
+
+        // Verify the file was created and has correct content
+        let written_content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(written_content, content);
+    }
+
+    #[test]
+    fn test_write_code_file_success_typescript() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.ts");
+        let content = r#"export interface User {
+    name: string;
+    age: number;
+}"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "typescript");
+        assert!(result.is_ok());
+
+        // Verify the file was created and has correct content
+        let written_content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(written_content, content);
+    }
+
+    #[test]
+    fn test_write_code_file_success_python() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.py");
+        let content = r#"from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class User:
+    name: str
+    age: int"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "python");
+        assert!(result.is_ok());
+
+        // Verify the file was created and has correct content
+        let written_content = fs::read_to_string(&file_path).unwrap();
+        assert_eq!(written_content, content);
+    }
+
+    #[test]
+    fn test_write_code_file_empty_content() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = "";
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.is_file_error());
+        assert!(error.to_string().contains("empty code content"));
+    }
+
+    #[test]
+    fn test_write_code_file_whitespace_only() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = "   \n\t  \n  ";
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.is_file_error());
+        assert!(error.to_string().contains("empty code content"));
+    }
+
+    #[test]
+    fn test_write_code_file_with_directory_creation() {
+        let temp_dir = TempDir::new().unwrap();
+        let nested_path = temp_dir
+            .path()
+            .join("nested")
+            .join("dir")
+            .join("test.rs");
+        let content = r#"pub struct Test {
+    pub field: String,
+}"#;
+
+        let result = write_code_file(nested_path.to_str().unwrap(), content, "rust");
+        assert!(result.is_ok());
+
+        // Verify the file was created
+        assert!(nested_path.exists());
+        let written_content = fs::read_to_string(&nested_path).unwrap();
+        assert_eq!(written_content, content);
+    }
+
+    #[test]
+    fn test_validate_go_content_missing_package() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = r#"type User struct {
+    Name string
+}"#;
+
+        // Should succeed but warn about missing package
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_go_content_unbalanced_braces() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = r#"package main
+
+type User struct {
+    Name string
+// Missing closing brace"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("unbalanced braces"));
+    }
+
+    #[test]
+    fn test_validate_rust_content_unbalanced_parens() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.rs");
+        let content = r#"pub struct User {
+    pub name: String,
+    pub get_info(&self -> String {
+        self.name.clone()
+    }
+}"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "rust");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("unbalanced parentheses"));
+    }
+
+    #[test]
+    fn test_validate_typescript_content_unbalanced_braces() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.ts");
+        let content = r#"export interface User {
+    name: string;
+    age: number;
+// Missing closing brace"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "typescript");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("unbalanced braces"));
+    }
+
+    #[test]
+    fn test_validate_python_content_unbalanced_brackets() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.py");
+        let content = r#"from typing import List
+
+class User:
+    def __init__(self, items: List[str):
+        self.items = items"#;
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "python");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("unbalanced brackets"));
+    }
+
+    #[test]
+    fn test_code_file_operations_integration() {
+        let temp_dir = TempDir::new().unwrap();
+
+        // Test all supported formats
+        let formats = vec![
+            ("go", "package main\n\ntype User struct {\n    Name string `json:\"name\"`\n}"),
+            ("rust", "use serde::{Deserialize, Serialize};\n\n#[derive(Serialize, Deserialize)]\npub struct User {\n    pub name: String,\n}"),
+            ("typescript", "export interface User {\n    name: string;\n}"),
+            ("python", "from dataclasses import dataclass\n\n@dataclass\nclass User:\n    name: str"),
+        ];
+
+        for (format, content) in formats {
+            let input_path = temp_dir.path().join(format!("input_{}.json", format));
+            let json_content = r#"{"name": "test"}"#;
+            fs::write(&input_path, json_content).unwrap();
+
+            // Generate code output path
+            let output_path = generate_code_output_path(input_path.to_str().unwrap(), None, format);
+            assert!(output_path.ends_with(&format!("input_{}.{}", format, get_file_extension_for_format(format))));
+
+            // Write code file
+            let write_result = write_code_file(&output_path, content, format);
+            assert!(write_result.is_ok(), "Failed to write {} file: {:?}", format, write_result);
+
+            // Verify the code file was created
+            assert!(Path::new(&output_path).exists());
+            let written_content = fs::read_to_string(&output_path).unwrap();
+            assert_eq!(written_content, content);
+        }
+    }
+
+    #[test]
+    fn test_content_validation_too_short() {
+        let temp_dir = TempDir::new().unwrap();
+        let file_path = temp_dir.path().join("test.go");
+        let content = "short";
+
+        let result = write_code_file(file_path.to_str().unwrap(), content, "go");
+        assert!(result.is_err());
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("too short"));
     }
 }

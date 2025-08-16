@@ -18,6 +18,10 @@ pub enum J2sError {
     /// Command line argument errors
     #[error("Invalid arguments: {0}")]
     Argument(String),
+
+    /// Code generation errors
+    #[error("Code generation failed: {0}")]
+    Codegen(String),
 }
 
 /// Convenience type alias for Results with J2sError
@@ -58,6 +62,11 @@ impl J2sError {
         J2sError::Argument(msg.into())
     }
 
+    /// Create a new code generation error with a custom message
+    pub fn codegen_error(msg: impl Into<String>) -> Self {
+        J2sError::Codegen(msg.into())
+    }
+
     /// Check if this is a file-related error
     #[allow(dead_code)]
     pub fn is_file_error(&self) -> bool {
@@ -80,6 +89,12 @@ impl J2sError {
     #[allow(dead_code)]
     pub fn is_argument_error(&self) -> bool {
         matches!(self, J2sError::Argument(_))
+    }
+
+    /// Check if this is a code generation error
+    #[allow(dead_code)]
+    pub fn is_codegen_error(&self) -> bool {
+        matches!(self, J2sError::Codegen(_))
     }
 }
 
