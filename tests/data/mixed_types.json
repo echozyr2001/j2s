@@ -1,0 +1,42 @@
+{
+  "dynamic_field": "string_value",
+  "nullable_string": null,
+  "optional_number": 42,
+  "mixed_array": [
+    "string",
+    123,
+    true,
+    null,
+    {
+      "nested": "object"
+    },
+    [1, 2, 3]
+  ],
+  "union_types": {
+    "value_1": "text",
+    "value_2": 456,
+    "value_3": false
+  },
+  "polymorphic_objects": [
+    {
+      "type": "user",
+      "id": 1,
+      "name": "John"
+    },
+    {
+      "type": "admin",
+      "id": 2,
+      "name": "Jane",
+      "permissions": ["all"]
+    },
+    {
+      "type": "guest",
+      "session_id": "abc123"
+    }
+  ],
+  "conditional_fields": {
+    "base_field": "always_present",
+    "sometimes_string": "hello",
+    "sometimes_number": null
+  }
+}

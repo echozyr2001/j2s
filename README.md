@@ -297,6 +297,14 @@ j2s provides comprehensive error handling with helpful messages:
 - **Permission errors**: Specific guidance for file access issues
 - **Large files**: Warnings and limits for performance protection
 
+## Documentation
+
+- **[Quick Start](QUICK_START.md)** - Get started in 5 minutes
+- **[Tutorial](TUTORIAL.md)** - Step-by-step guide with comprehensive examples
+- **[Use Cases](USE_CASES.md)** - Real-world scenarios and integration examples
+- **[Best Practices](BEST_PRACTICES.md)** - Recommendations for effective usage
+- **[Troubleshooting](TROUBLESHOOTING.md)** - Common issues and solutions
+
 ## Development
 
 ### Building

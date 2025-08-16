@@ -22,6 +22,10 @@ pub enum J2sError {
     /// Code generation errors
     #[error("Code generation failed: {0}")]
     Codegen(String),
+
+    /// Performance-related errors
+    #[error("Performance issue: {0}")]
+    Performance(String),
 }
 
 /// Convenience type alias for Results with J2sError
@@ -67,6 +71,11 @@ impl J2sError {
         J2sError::Codegen(msg.into())
     }
 
+    /// Create a new performance error with a custom message
+    pub fn performance_error(msg: impl Into<String>) -> Self {
+        J2sError::Performance(msg.into())
+    }
+
     /// Check if this is a file-related error
     #[allow(dead_code)]
     pub fn is_file_error(&self) -> bool {
@@ -95,6 +104,12 @@ impl J2sError {
     #[allow(dead_code)]
     pub fn is_codegen_error(&self) -> bool {
         matches!(self, J2sError::Codegen(_))
+    }
+
+    /// Check if this is a performance error
+    #[allow(dead_code)]
+    pub fn is_performance_error(&self) -> bool {
+        matches!(self, J2sError::Performance(_))
     }
 }
 

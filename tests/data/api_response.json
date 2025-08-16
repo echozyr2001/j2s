@@ -1,0 +1,172 @@
+{
+  "status": "success",
+  "code": 200,
+  "message": "Data retrieved successfully",
+  "timestamp": "2024-01-15T10:30:00.123Z",
+  "request_id": "req_abc123def456",
+  "data": {
+    "pagination": {
+      "page": 1,
+      "per_page": 20,
+      "total": 150,
+      "total_pages": 8,
+      "has_next": true,
+      "has_prev": false
+    },
+    "items": [
+      {
+        "id": "item_001",
+        "type": "product",
+        "attributes": {
+          "name": "Wireless Headphones",
+          "description": "High-quality wireless headphones with noise cancellation",
+          "price": {
+            "amount": 299.99,
+            "currency": "USD",
+            "formatted": "$299.99"
+          },
+          "availability": {
+            "in_stock": true,
+            "quantity": 45,
+            "warehouse_locations": ["US-WEST", "US-EAST"],
+            "estimated_delivery": "2024-01-18"
+          },
+          "specifications": {
+            "brand": "TechCorp",
+            "model": "WH-1000XM5",
+            "color": "Black",
+            "weight": "250g",
+            "battery_life": "30 hours",
+            "connectivity": ["Bluetooth 5.0", "USB-C", "3.5mm jack"],
+            "features": [
+              "Active Noise Cancellation",
+              "Quick Charge",
+              "Voice Assistant",
+              "Touch Controls"
+            ]
+          },
+          "reviews": {
+            "average_rating": 4.7,
+            "total_reviews": 1234,
+            "rating_distribution": {
+              "5": 856,
+              "4": 234,
+              "3": 89,
+              "2": 34,
+              "1": 21
+            }
+          },
+          "images": [
+            {
+              "url": "https://example.com/images/headphones_main.jpg",
+              "alt": "Wireless headphones main view",
+              "type": "main",
+              "dimensions": {
+                "width": 800,
+                "height": 600
+              }
+            },
+            {
+              "url": "https://example.com/images/headphones_side.jpg",
+              "alt": "Wireless headphones side view",
+              "type": "gallery",
+              "dimensions": {
+                "width": 400,
+                "height": 300
+              }
+            }
+          ],
+          "categories": [
+            {
+              "id": "cat_001",
+              "name": "Electronics",
+              "slug": "electronics",
+              "parent": null
+            },
+            {
+              "id": "cat_002",
+              "name": "Audio",
+              "slug": "audio",
+              "parent": "cat_001"
+            }
+          ],
+          "tags": ["wireless", "bluetooth", "noise-cancelling", "premium"],
+          "metadata": {
+            "created_at": "2023-06-15T09:00:00Z",
+            "updated_at": "2024-01-10T14:30:00Z",
+            "created_by": "admin_user",
+            "version": 3,
+            "seo": {
+              "title": "Premium Wireless Headphones - TechCorp WH-1000XM5",
+              "description": "Experience superior sound quality with our premium wireless headphones featuring active noise cancellation.",
+              "keywords": ["wireless headphones", "noise cancellation", "bluetooth", "premium audio"]
+            }
+          }
+        },
+        "relationships": {
+          "variants": [
+            {
+              "id": "var_001",
+              "color": "White",
+              "price_difference": 0
+            },
+            {
+              "id": "var_002", 
+              "color": "Silver",
+              "price_difference": 20.00
+            }
+          ],
+          "accessories": [
+            {
+              "id": "acc_001",
+              "name": "Carrying Case",
+              "price": 49.99
+            }
+          ],
+          "related_products": ["item_002", "item_003"]
+        }
+      }
+    ],
+    "filters": {
+      "applied": {
+        "category": "audio",
+        "price_range": {
+          "min": 200,
+          "max": 500
+        },
+        "in_stock": true
+      },
+      "available": {
+        "brands": ["TechCorp", "AudioPro", "SoundMax"],
+        "colors": ["Black", "White", "Silver", "Blue"],
+        "features": ["Noise Cancellation", "Wireless", "Quick Charge"],
+        "price_ranges": [
+          {"min": 0, "max": 100, "count": 23},
+          {"min": 100, "max": 300, "count": 67},
+          {"min": 300, "max": 500, "count": 45},
+          {"min": 500, "max": 1000, "count": 15}
+        ]
+      }
+    }
+  },
+  "meta": {
+    "api_version": "v2.1",
+    "response_time_ms": 145,
+    "cache": {
+      "hit": false,
+      "ttl": 300
+    },
+    "rate_limit": {
+      "limit": 1000,
+      "remaining": 987,
+      "reset_at": "2024-01-15T11:00:00Z"
+    }
+  },
+  "links": {
+    "self": "https://api.example.com/products?page=1",
+    "next": "https://api.example.com/products?page=2",
+    "prev": null,
+    "first": "https://api.example.com/products?page=1",
+    "last": "https://api.example.com/products?page=8"
+  }
+}

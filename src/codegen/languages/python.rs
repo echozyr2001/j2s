@@ -60,7 +60,16 @@ impl PythonGenerator {
             FieldType::Number => "float",
             FieldType::Boolean => "bool",
             FieldType::Custom(name) => name,
-            FieldType::Any => "Any",
+            FieldType::Any => {
+                if is_array {
+                    // For arrays with mixed types, use Any as element type
+                    // Could be enhanced to use Union types like List[Union[str, int, bool]]
+                    "Any"
+                } else {
+                    // For single Any fields, use Any
+                    "Any"
+                }
+            }
         };
 
         let mut result = base_type.to_string();

@@ -7,4 +7,5 @@ pub mod cli;
 pub mod codegen;
 pub mod error;
 pub mod file_ops;
+pub mod performance;
 pub mod schema_generator;

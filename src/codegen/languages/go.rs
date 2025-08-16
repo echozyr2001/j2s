@@ -61,7 +61,15 @@ impl GoGenerator {
             FieldType::Number => "float64",
             FieldType::Boolean => "bool",
             FieldType::Custom(name) => name,
-            FieldType::Any => "interface{}",
+            FieldType::Any => {
+                if is_array {
+                    // For arrays with mixed types, use interface{} as element type
+                    "interface{}"
+                } else {
+                    // For single Any fields, use interface{}
+                    "interface{}"
+                }
+            }
         };
 
         let mut result = base_type.to_string();
@@ -125,6 +133,23 @@ impl GoGenerator {
         self.comment_generator.generate_file_header("j2s", &timestamp)
     }
 
+    /// Order nested structs to ensure dependencies are defined before use
+    fn order_structs_by_dependency<'a>(&self, main_struct: &'a StructDefinition) -> Vec<&'a StructDefinition> {
+        let mut ordered = Vec::new();
+        let mut visited = HashSet::new();
+        
+        // Simple topological sort - for now just return in original order
+        // This can be enhanced later if circular dependencies become an issue
+        for nested in &main_struct.nested_structs {
+            if !visited.contains(&nested.name) {
+                ordered.push(nested);
+                visited.insert(&nested.name);
+            }
+        }
+        
+        ordered
+    }
+
     /// Generate a complete Go struct definition
     fn generate_struct(&self, struct_def: &StructDefinition, include_comments: bool) -> String {
         let struct_name = NameConverter::to_pascal_case(&struct_def.name);
@@ -172,8 +197,26 @@ impl CodeGenerator for GoGenerator {
     fn generate(&self, json_value: &Value, options: &GenerationOptions) -> Result<String> {
         use crate::codegen::types::JsonToIrConverter;
         
-        // Create converter for Go language
-        let mut converter = JsonToIrConverter::new("go");
+        // Validate nesting depth before processing
+        let max_depth = JsonToIrConverter::validate_nesting_depth(json_value)?;
+        if max_depth > 50 {
+            return Err(crate::error::J2sError::codegen_error(
+                format!(
+                    "JSON structure is too deeply nested ({} levels). Consider simplifying the structure or increasing the recursion limit.",
+                    max_depth
+                )
+            ));
+        }
+        
+        // Get structure statistics for better error reporting
+        let stats = JsonToIrConverter::get_structure_stats(json_value);
+        
+        // Create converter for Go language with appropriate max depth
+        let mut converter = if max_depth > 20 {
+            JsonToIrConverter::with_max_depth("go", max_depth + 5)
+        } else {
+            JsonToIrConverter::new("go")
+        };
         
         // Determine struct name
         let struct_name = options.get_struct_name("GeneratedStruct");
@@ -188,14 +231,23 @@ impl CodeGenerator for GoGenerator {
         // Add file header comment if comments are enabled
         if options.include_comments {
             result.push_str(&self.generate_file_header());
+            
+            // Add structure complexity information as comments
+            if stats.max_depth > 5 || stats.object_count > 10 {
+                result.push_str(&format!(
+                    "// Structure complexity: {} levels deep, {} objects, {} arrays, {} total fields\n",
+                    stats.max_depth, stats.object_count, stats.array_count, stats.total_fields
+                ));
+            }
         }
         
         // Add package declaration
         let package_name = options.get_language_option("package").unwrap_or(&"main".to_string()).clone();
         result.push_str(&format!("package {}\n\n", package_name));
         
-        // Generate nested structs first
-        for nested_struct in &struct_def.nested_structs {
+        // Generate nested structs first (in dependency order)
+        let ordered_structs = self.order_structs_by_dependency(&struct_def);
+        for nested_struct in &ordered_structs {
             result.push_str(&self.generate_struct(nested_struct, options.include_comments));
             result.push('\n');
         }

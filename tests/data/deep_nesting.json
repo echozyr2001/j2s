@@ -1,0 +1,68 @@
+{
+  "level1": {
+    "data": "Level 1",
+    "level2": {
+      "data": "Level 2",
+      "level3": {
+        "data": "Level 3",
+        "level4": {
+          "data": "Level 4",
+          "level5": {
+            "data": "Level 5",
+            "level6": {
+              "data": "Level 6",
+              "level7": {
+                "data": "Level 7",
+                "level8": {
+                  "data": "Level 8",
+                  "level9": {
+                    "data": "Level 9",
+                    "level10": {
+                      "data": "Level 10",
+                      "final_value": "Deep nesting test complete",
+                      "metadata": {
+                        "depth": 10,
+                        "test_type": "deep_nesting"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "parallel_branch": {
+    "branch_a": {
+      "sub_a1": {
+        "sub_a2": {
+          "value": "Branch A deep value"
+        }
+      }
+    },
+    "branch_b": {
+      "sub_b1": {
+        "sub_b2": {
+          "sub_b3": {
+            "value": "Branch B deeper value"
+          }
+        }
+      }
+    }
+  },
+  "array_nesting": [
+    {
+      "nested_array": [
+        {
+          "deeper_array": [
+            {
+              "deepest_value": "Nested in arrays"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

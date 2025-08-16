@@ -7,6 +7,21 @@
 use std::collections::HashMap;
 use serde_json::Value;
 
+/// Statistics about JSON structure complexity
+#[derive(Debug, Clone, Default)]
+pub struct StructureStats {
+    /// Maximum nesting depth found
+    pub max_depth: usize,
+    /// Total number of objects in the structure
+    pub object_count: usize,
+    /// Total number of arrays in the structure
+    pub array_count: usize,
+    /// Total number of fields across all objects
+    pub total_fields: usize,
+    /// Maximum length of any array found
+    pub max_array_length: usize,
+}
+
 /// Represents a complete struct/class/interface definition
 ///
 /// This is the top-level container for a generated type definition. It includes
@@ -242,6 +257,10 @@ pub struct JsonToIrConverter {
     max_depth: usize,
     /// Current recursion depth
     current_depth: usize,
+    /// Track generated struct names to avoid duplicates
+    generated_names: std::collections::HashSet<String>,
+    /// Track the current path for better naming
+    current_path: Vec<String>,
 }
 
 impl JsonToIrConverter {
@@ -249,8 +268,10 @@ impl JsonToIrConverter {
     pub fn new(language: &str) -> Self {
         Self {
             type_mapper: TypeMapper::new(language),
-            max_depth: 10, // Reasonable default to prevent stack overflow
+            max_depth: 20, // Increased default to handle deeper nesting
             current_depth: 0,
+            generated_names: std::collections::HashSet::new(),
+            current_path: Vec::new(),
         }
     }
 
@@ -260,12 +281,31 @@ impl JsonToIrConverter {
             type_mapper: TypeMapper::new(language),
             max_depth,
             current_depth: 0,
+            generated_names: std::collections::HashSet::new(),
+            current_path: Vec::new(),
         }
+    }
+
+    /// Set the maximum recursion depth
+    pub fn set_max_depth(&mut self, max_depth: usize) {
+        self.max_depth = max_depth;
+    }
+
+    /// Get the current recursion depth
+    pub fn current_depth(&self) -> usize {
+        self.current_depth
+    }
+
+    /// Get the maximum recursion depth
+    pub fn max_depth(&self) -> usize {
+        self.max_depth
     }
 
     /// Convert JSON value to StructDefinition
     pub fn convert_to_struct(&mut self, json_value: &Value, struct_name: &str) -> crate::error::Result<StructDefinition> {
         self.current_depth = 0;
+        self.generated_names.clear();
+        self.current_path.clear();
         self.convert_object_to_struct(json_value, struct_name)
     }
 
@@ -273,7 +313,12 @@ impl JsonToIrConverter {
     fn convert_object_to_struct(&mut self, json_value: &Value, struct_name: &str) -> crate::error::Result<StructDefinition> {
         if self.current_depth >= self.max_depth {
             return Err(crate::error::J2sError::codegen_error(
-                format!("Maximum recursion depth ({}) exceeded while processing nested structures", self.max_depth)
+                format!(
+                    "Maximum recursion depth ({}) exceeded while processing nested structures at path: {}. \
+                    Consider increasing max_depth or simplifying the JSON structure.",
+                    self.max_depth,
+                    self.current_path.join(".")
+                )
             ));
         }
 
@@ -290,15 +335,25 @@ impl JsonToIrConverter {
                 
                 for key in sorted_keys {
                     let value = &obj[key];
+                    
+                    // Add current field to path for better error reporting and naming
+                    self.current_path.push(key.clone());
+                    
                     let field_def = self.convert_value_to_field(key, value, &mut nested_structs)?;
                     struct_def = struct_def.add_field(field_def);
+                    
+                    // Remove current field from path
+                    self.current_path.pop();
                 }
                 
                 self.current_depth -= 1;
             }
             _ => {
                 return Err(crate::error::J2sError::codegen_error(
-                    "Expected JSON object for struct conversion"
+                    format!(
+                        "Expected JSON object for struct conversion at path: {}",
+                        self.current_path.join(".")
+                    )
                 ));
             }
         }
@@ -318,7 +373,13 @@ impl JsonToIrConverter {
         value: &Value,
         nested_structs: &mut Vec<StructDefinition>,
     ) -> crate::error::Result<FieldDefinition> {
-        let is_optional = value.is_null();
+        // For arrays, check if they contain null values to determine optionality
+        let is_optional = match value {
+            Value::Null => true,
+            Value::Array(arr) => arr.iter().any(|v| v.is_null()),
+            _ => false,
+        };
+        
         let (field_type, is_array) = self.process_json_type_with_value(value, field_name, nested_structs)?;
 
         let code_name = self.convert_field_name(field_name);
@@ -367,22 +428,29 @@ impl JsonToIrConverter {
         match json_value {
             Value::Array(arr) => {
                 if arr.is_empty() {
+                    // For empty arrays, we can't determine the element type
+                    // Use Any type and let the language generators handle it appropriately
                     Ok((FieldType::Any, true))
                 } else {
-                    // Process first element to determine array element type
-                    let (inner_type, _) = self.process_json_type_with_value(&arr[0], field_name, nested_structs)?;
-                    Ok((inner_type, true))
+                    // Analyze array elements to determine the most appropriate type
+                    let element_type = self.analyze_array_element_type(arr, field_name, nested_structs)?;
+                    Ok((element_type, true))
                 }
             }
-            Value::Object(_) => {
-                // Generate a name for the nested struct based on the field name
-                let nested_struct_name = self.generate_nested_struct_name(field_name);
-                
-                // Create the nested struct definition
-                let nested_struct = self.convert_object_to_struct(json_value, &nested_struct_name)?;
-                nested_structs.push(nested_struct);
-                
-                Ok((FieldType::Custom(nested_struct_name), false))
+            Value::Object(obj) => {
+                if obj.is_empty() {
+                    // Empty object - use Any type
+                    Ok((FieldType::Any, false))
+                } else {
+                    // Generate a name for the nested struct based on the field name
+                    let nested_struct_name = self.generate_nested_struct_name(field_name);
+                    
+                    // Create the nested struct definition
+                    let nested_struct = self.convert_object_to_struct(json_value, &nested_struct_name)?;
+                    nested_structs.push(nested_struct);
+                    
+                    Ok((FieldType::Custom(nested_struct_name), false))
+                }
             }
             Value::String(_) => Ok((FieldType::String, false)),
             Value::Number(n) => {
@@ -393,14 +461,229 @@ impl JsonToIrConverter {
                 }
             }
             Value::Bool(_) => Ok((FieldType::Boolean, false)),
-            Value::Null => Ok((FieldType::Any, false)),
+            Value::Null => {
+                // Null values are ambiguous - use Any type and mark as optional
+                Ok((FieldType::Any, false))
+            }
         }
     }
 
-    /// Generate a name for a nested struct based on the field name
-    fn generate_nested_struct_name(&self, field_name: &str) -> String {
+    /// Analyze array elements to determine the most appropriate element type
+    fn analyze_array_element_type(
+        &mut self,
+        arr: &[Value],
+        field_name: &str,
+        nested_structs: &mut Vec<StructDefinition>,
+    ) -> crate::error::Result<FieldType> {
+        if arr.is_empty() {
+            return Ok(FieldType::Any);
+        }
+
+        // Analyze all elements to determine if we have mixed types
+        let mut element_types = std::collections::HashMap::new();
+        let mut has_objects = false;
+        let mut has_primitives = false;
+
+        for (index, element) in arr.iter().enumerate() {
+            let element_field_name = format!("{}_{}", field_name, index);
+            let (element_type, _) = self.process_json_type_with_value(element, &element_field_name, nested_structs)?;
+            
+            match &element_type {
+                FieldType::Custom(_) => has_objects = true,
+                _ => has_primitives = true,
+            }
+            
+            *element_types.entry(element_type).or_insert(0) += 1;
+        }
+
+        // Determine the best type based on analysis
+        if element_types.len() == 1 {
+            // All elements are the same type
+            Ok(element_types.keys().next().unwrap().clone())
+        } else if has_objects && has_primitives {
+            // Mixed objects and primitives - use Any type
+            Ok(FieldType::Any)
+        } else if has_objects {
+            // Multiple object types - try to find a common structure or use Any
+            self.analyze_mixed_object_types(arr, field_name, nested_structs)
+        } else {
+            // Multiple primitive types - determine the most general type
+            self.determine_common_primitive_type(&element_types)
+        }
+    }
+
+    /// Analyze mixed object types in an array to find common structure
+    fn analyze_mixed_object_types(
+        &mut self,
+        arr: &[Value],
+        field_name: &str,
+        nested_structs: &mut Vec<StructDefinition>,
+    ) -> crate::error::Result<FieldType> {
+        // For now, create a union-like structure or use Any
+        // This could be enhanced to create discriminated unions in languages that support them
+        
+        // Check if all objects have similar structure (same keys)
+        let mut all_keys: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut common_keys: Option<std::collections::HashSet<String>> = None;
+        
+        for element in arr {
+            if let Value::Object(obj) = element {
+                let keys: std::collections::HashSet<String> = obj.keys().cloned().collect();
+                all_keys.extend(keys.clone());
+                
+                match &common_keys {
+                    None => common_keys = Some(keys),
+                    Some(existing) => {
+                        common_keys = Some(existing.intersection(&keys).cloned().collect());
+                    }
+                }
+            }
+        }
+        
+        // If objects have common structure, create a unified type
+        if let Some(common) = common_keys {
+            if !common.is_empty() && common.len() > all_keys.len() / 2 {
+                // Objects have significant common structure
+                let unified_name = self.generate_nested_struct_name(&format!("{}_item", field_name));
+                let unified_struct = self.create_unified_struct_from_array(arr, &unified_name)?;
+                nested_structs.push(unified_struct);
+                return Ok(FieldType::Custom(unified_name));
+            }
+        }
+        
+        // Objects are too different, use Any type
+        Ok(FieldType::Any)
+    }
+
+    /// Create a unified struct definition from an array of similar objects
+    fn create_unified_struct_from_array(
+        &mut self,
+        arr: &[Value],
+        struct_name: &str,
+    ) -> crate::error::Result<StructDefinition> {
+        let mut unified_fields: std::collections::HashMap<String, (FieldType, bool, bool)> = std::collections::HashMap::new();
+        let mut nested_structs = Vec::new();
+        
+        // Analyze all objects to determine field types and optionality
+        for element in arr {
+            if let Value::Object(obj) = element {
+                for (key, value) in obj {
+                    let (field_type, is_array) = self.process_json_type_with_value(value, key, &mut nested_structs)?;
+                    let is_optional = value.is_null();
+                    
+                    match unified_fields.get_mut(key) {
+                        Some((existing_type, existing_optional, existing_array)) => {
+                            // If types differ, make it optional and use Any
+                            if *existing_type != field_type {
+                                *existing_type = FieldType::Any;
+                            }
+                            *existing_optional = *existing_optional || is_optional;
+                            *existing_array = *existing_array || is_array;
+                        }
+                        None => {
+                            unified_fields.insert(key.clone(), (field_type, is_optional, is_array));
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Create the unified struct
+        let mut struct_def = StructDefinition::new(struct_name);
+        
+        // Add all nested structs first
+        for nested in nested_structs {
+            struct_def = struct_def.add_nested_struct(nested);
+        }
+        
+        // Add fields sorted by name for consistency
+        let mut sorted_fields: Vec<_> = unified_fields.into_iter().collect();
+        sorted_fields.sort_by(|a, b| a.0.cmp(&b.0));
+        
+        for (json_name, (field_type, is_optional, is_array)) in sorted_fields {
+            let code_name = self.convert_field_name(&json_name);
+            let field = FieldDefinition::new(&json_name, &code_name, field_type)
+                .optional(is_optional)
+                .array(is_array);
+            struct_def = struct_def.add_field(field);
+        }
+        
+        Ok(struct_def)
+    }
+
+    /// Determine the most general primitive type from a set of types
+    fn determine_common_primitive_type(
+        &self,
+        type_counts: &std::collections::HashMap<FieldType, usize>,
+    ) -> crate::error::Result<FieldType> {
+        let types: Vec<&FieldType> = type_counts.keys().collect();
+        
+        // If we have more than 2 different primitive types, use Any
+        if types.len() > 2 {
+            return Ok(FieldType::Any);
+        }
+        
+        // If we have Any type mixed with anything else, use Any
+        if types.contains(&&FieldType::Any) {
+            return Ok(FieldType::Any);
+        }
+        
+        // If we have strings mixed with other primitives, use Any
+        if types.contains(&&FieldType::String) && types.len() > 1 {
+            return Ok(FieldType::Any);
+        }
+        
+        // If we have booleans mixed with numbers, use Any
+        if types.contains(&&FieldType::Boolean) && 
+           (types.contains(&&FieldType::Number) || types.contains(&&FieldType::Integer)) {
+            return Ok(FieldType::Any);
+        }
+        
+        // If we have numbers and integers, use Number (more general)
+        if types.contains(&&FieldType::Number) && types.contains(&&FieldType::Integer) {
+            return Ok(FieldType::Number);
+        }
+        
+        // Find the most common type
+        let most_common = type_counts
+            .iter()
+            .max_by_key(|(_, count)| *count)
+            .map(|(field_type, _)| field_type.clone())
+            .unwrap_or(FieldType::Any);
+        
+        Ok(most_common)
+    }
+
+    /// Generate a name for a nested struct based on the field name and current path
+    fn generate_nested_struct_name(&mut self, field_name: &str) -> String {
         use crate::codegen::utils::NameConverter;
-        NameConverter::convert_type_name(field_name, self.type_mapper.language())
+        
+        // Build a hierarchical name based on the current path
+        let mut name_parts = self.current_path.clone();
+        name_parts.push(field_name.to_string());
+        
+        // Create a base name from the path
+        let base_name = if name_parts.len() > 3 {
+            // For very deep nesting, use only the last few parts to keep names manageable
+            let relevant_parts = &name_parts[name_parts.len().saturating_sub(3)..];
+            relevant_parts.join("_")
+        } else {
+            name_parts.join("_")
+        };
+        
+        let converted_name = NameConverter::convert_type_name(&base_name, self.type_mapper.language());
+        
+        // Ensure uniqueness by adding a suffix if needed
+        let mut final_name = converted_name.clone();
+        let mut counter = 1;
+        
+        while self.generated_names.contains(&final_name) {
+            final_name = format!("{converted_name}{counter}");
+            counter += 1;
+        }
+        
+        self.generated_names.insert(final_name.clone());
+        final_name
     }
 
     /// Convert field name to appropriate code name based on language conventions
@@ -450,6 +733,68 @@ impl JsonToIrConverter {
     /// Get mutable reference to type mapper for customization
     pub fn type_mapper_mut(&mut self) -> &mut TypeMapper {
         &mut self.type_mapper
+    }
+
+    /// Validate that the JSON structure doesn't exceed reasonable nesting limits
+    pub fn validate_nesting_depth(json_value: &Value) -> crate::error::Result<usize> {
+        fn calculate_depth(value: &Value, current_depth: usize, max_seen: &mut usize) -> crate::error::Result<()> {
+            *max_seen = (*max_seen).max(current_depth);
+            
+            // Prevent infinite recursion in case of circular references
+            if current_depth > 100 {
+                return Err(crate::error::J2sError::codegen_error(
+                    "JSON structure appears to have circular references or excessive nesting (>100 levels)"
+                ));
+            }
+            
+            match value {
+                Value::Object(obj) => {
+                    for (_, v) in obj {
+                        calculate_depth(v, current_depth + 1, max_seen)?;
+                    }
+                }
+                Value::Array(arr) => {
+                    for v in arr {
+                        calculate_depth(v, current_depth + 1, max_seen)?;
+                    }
+                }
+                _ => {}
+            }
+            Ok(())
+        }
+        
+        let mut max_depth = 0;
+        calculate_depth(json_value, 0, &mut max_depth)?;
+        Ok(max_depth)
+    }
+
+    /// Get statistics about the JSON structure for debugging
+    pub fn get_structure_stats(json_value: &Value) -> StructureStats {
+        fn analyze(value: &Value, stats: &mut StructureStats, current_depth: usize) {
+            stats.max_depth = stats.max_depth.max(current_depth);
+            
+            match value {
+                Value::Object(obj) => {
+                    stats.object_count += 1;
+                    stats.total_fields += obj.len();
+                    for (_, v) in obj {
+                        analyze(v, stats, current_depth + 1);
+                    }
+                }
+                Value::Array(arr) => {
+                    stats.array_count += 1;
+                    stats.max_array_length = stats.max_array_length.max(arr.len());
+                    for v in arr {
+                        analyze(v, stats, current_depth + 1);
+                    }
+                }
+                _ => {}
+            }
+        }
+        
+        let mut stats = StructureStats::default();
+        analyze(json_value, &mut stats, 0);
+        stats
     }
 }
 
@@ -1156,12 +1501,12 @@ mod tests {
 
     #[test]
     fn test_nested_struct_name_generation() {
-        let converter = JsonToIrConverter::new("go");
+        let mut converter = JsonToIrConverter::new("go");
         
         assert_eq!(converter.generate_nested_struct_name("user"), "User");
         assert_eq!(converter.generate_nested_struct_name("user_profile"), "UserProfile");
         assert_eq!(converter.generate_nested_struct_name("settings"), "Settings");
-        assert_eq!(converter.generate_nested_struct_name(""), "NestedStruct");
+        assert_eq!(converter.generate_nested_struct_name(""), "field");
     }
 
     #[test]

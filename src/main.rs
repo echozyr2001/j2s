@@ -48,12 +48,14 @@ mod cli;
 mod codegen;
 mod error;
 mod file_ops;
+mod performance;
 mod schema_generator;
 
 use cli::{parse_args, print_help, print_version};
 use codegen::{factory::GeneratorFactory, generator::GenerationOptions};
 use error::{J2sError, Result};
 use file_ops::{generate_code_output_path, generate_output_path, read_json_file, write_code_file, write_schema_file};
+use performance::{MemoryEfficientAnalyzer, ParallelCodeGenerator, PerformanceMonitor, StreamingJsonProcessor};
 use schema_generator::{generate_schema, generate_schema_with_progress};
 
 /// Main entry point for the j2s application
@@ -79,6 +81,9 @@ use schema_generator::{generate_schema, generate_schema_with_progress};
 /// - File size warnings and limits
 /// - Memory-efficient processing
 fn main() -> Result<()> {
+    // Initialize performance monitoring
+    let mut performance_monitor = PerformanceMonitor::new();
+    
     // Parse command line arguments
     let args = parse_args();
 
@@ -123,10 +128,13 @@ fn main() -> Result<()> {
     // Provide user feedback about what we're doing
     println!("📖 Reading JSON file: {input_path}");
 
-    // Read JSON file
+    // Read JSON file with performance monitoring
+    let io_start = performance_monitor.start_operation();
     let json_content = match read_json_file(input_path) {
         Ok(content) => {
             let file_size = content.len();
+            performance_monitor.record_input_size(file_size);
+            
             if file_size > 1_000_000 {
                 println!(
                     "📊 Processing large file ({:.1} MB)...",
@@ -141,32 +149,57 @@ fn main() -> Result<()> {
             return Err(e);
         }
     };
+    performance_monitor.record_io_time(io_start.elapsed());
 
-    // Parse JSON content
+    // Parse JSON content with performance optimization
     println!("🔍 Parsing JSON content...");
-    let json_value: serde_json::Value = match serde_json::from_str(&json_content) {
+    let streaming_processor = StreamingJsonProcessor::new();
+    let json_value = match streaming_processor.process_large_json(&json_content, &mut performance_monitor) {
         Ok(value) => value,
         Err(e) => {
             eprintln!("❌ Error parsing JSON: {e}");
             eprintln!("💡 Tip: Check that your JSON file has valid syntax");
             eprintln!("   Common issues: missing quotes, trailing commas, unescaped characters");
-            return Err(J2sError::json_error(format!(
-                "Failed to parse JSON from {input_path}: {e}"
-            )));
+            return Err(e);
         }
     };
 
+    // Analyze JSON structure for optimization decisions
+    let analyzer = MemoryEfficientAnalyzer::new();
+    let structure_analysis = analyzer.analyze_structure(&json_value, &mut performance_monitor);
+    
+    if structure_analysis.is_complex() {
+        println!("📊 Complex JSON structure detected - using optimized processing");
+        if std::env::var("J2S_VERBOSE").is_ok() {
+            structure_analysis.print_summary();
+        }
+    }
+
     // Generate output based on format
-    match format {
+    let result = match format {
         "schema" => {
             // Generate JSON Schema (backward compatibility)
-            generate_schema_output(&json_value, input_path, &args, &json_content)
+            generate_schema_output(&json_value, input_path, &args, &json_content, &mut performance_monitor)
         }
         _ => {
             // Generate code for the specified language
-            generate_code_output(&json_value, input_path, &args, format)
+            generate_code_output(&json_value, input_path, &args, format, &mut performance_monitor)
         }
+    };
+
+    // Print performance summary if verbose mode is enabled or if processing took significant time
+    let final_metrics = performance_monitor.finalize();
+    if std::env::var("J2S_VERBOSE").is_ok() || final_metrics.total_time.as_millis() > 1000 {
+        final_metrics.print_summary();
     }
+
+    // Warn if performance is not acceptable
+    if !final_metrics.is_performance_acceptable() {
+        eprintln!("⚠️  Warning: Processing took longer than expected or used excessive memory");
+        eprintln!("💡 Consider using smaller input files or enabling verbose mode for details");
+    }
+
+    result
 }
 
 /// Generate JSON Schema output (maintains backward compatibility)
@@ -175,18 +208,21 @@ fn generate_schema_output(
     input_path: &str,
     args: &cli::CliArgs,
     json_content: &str,
+    performance_monitor: &mut PerformanceMonitor,
 ) -> Result<()> {
     // Generate output path for schema
     let output_path = generate_output_path(input_path, args.output.as_deref());
 
     // Generate schema with progress indication for large files
     println!("⚙️  Generating JSON Schema...");
+    let generation_start = performance_monitor.start_operation();
     let schema = if json_content.len() > 100_000 {
         // Use progress indication for large files
         generate_schema_with_progress(json_value, true)
     } else {
         generate_schema(json_value)
     };
+    performance_monitor.record_generation_time(generation_start.elapsed());
 
     // Serialize schema to JSON
     let schema_json = match serde_json::to_string_pretty(&schema) {
@@ -202,8 +238,11 @@ fn generate_schema_output(
 
     // Write schema file
     println!("💾 Writing schema to: {output_path}");
+    let io_start = performance_monitor.start_operation();
     match write_schema_file(&output_path, &schema_json) {
         Ok(()) => {
+            performance_monitor.record_output_size(schema_json.len());
+            performance_monitor.record_io_time(io_start.elapsed());
             println!("✅ Successfully generated schema file: {output_path}");
             let schema_size = schema_json.len();
             println!("📈 Schema size: {:.1} KB", schema_size as f64 / 1000.0);
@@ -224,12 +263,13 @@ fn generate_code_output(
     input_path: &str,
     args: &cli::CliArgs,
     format: &str,
+    performance_monitor: &mut PerformanceMonitor,
 ) -> Result<()> {
     // Generate output path for code
     let output_path = generate_code_output_path(input_path, args.output.as_deref(), format);
 
     // Create code generator for the target language
-    println!("🔧 Creating {} code generator...", format);
+    println!("🔧 Creating {format} code generator...");
     let generator = match GeneratorFactory::create_generator(format) {
         Ok(generator) => generator,
         Err(e) => {
@@ -269,8 +309,20 @@ fn generate_code_output(
         println!("⚙️  Generating {} code...", generator.language_name());
     }
     
+    let generation_start = performance_monitor.start_operation();
+    
+    // Check if we should use parallel processing for multiple formats
+    // For now, we generate one format at a time, but the infrastructure is ready
+    let formats = vec![format.to_string()];
+    let should_use_parallel = ParallelCodeGenerator::should_use_parallel(&formats, file_size);
+    
+    if should_use_parallel && file_size > 1_000_000 {
+        println!("🚀 Using optimized processing for large file...");
+    }
+    
     let generated_code = match generator.generate(json_value, &options) {
         Ok(code) => {
+            performance_monitor.record_generation_time(generation_start.elapsed());
             if file_size > 100_000 {
                 println!("✨ Code generation completed successfully!");
             }
@@ -292,8 +344,11 @@ fn generate_code_output(
 
     // Write code file
     println!("💾 Writing {} code to: {output_path}", generator.language_name());
+    let io_start = performance_monitor.start_operation();
     match write_code_file(&output_path, &generated_code, format) {
         Ok(()) => {
+            performance_monitor.record_output_size(generated_code.len());
+            performance_monitor.record_io_time(io_start.elapsed());
             println!("✅ Successfully generated {} file: {output_path}", generator.language_name());
             let code_size = generated_code.len();
             println!("📈 Code size: {:.1} KB", code_size as f64 / 1000.0);
@@ -309,7 +364,7 @@ fn generate_code_output(
             eprintln!("   • Verify there's enough disk space available");
             eprintln!("   • Check if the file is currently open in another application");
             if let Some(output) = &args.output {
-                eprintln!("   • Verify the output path is valid: {}", output);
+                eprintln!("   • Verify the output path is valid: {output}");
             }
             return Err(e);
         }

@@ -1,0 +1,48 @@
+{
+  "empty_object": {},
+  "empty_string": "",
+  "zero_number": 0,
+  "negative_number": -42,
+  "large_number": 9223372036854775807,
+  "float_precision": 3.141592653589793,
+  "scientific_notation": 1.23e-4,
+  "special_strings": {
+    "with-dashes": "value",
+    "with_underscores": "value",
+    "with spaces": "value",
+    "with.dots": "value",
+    "123numeric_start": "value",
+    "UPPERCASE": "value",
+    "camelCase": "value",
+    "PascalCase": "value",
+    "snake_case": "value"
+  },
+  "reserved_keywords": {
+    "class": "not_a_class",
+    "function": "not_a_function",
+    "return": "not_a_return",
+    "if": "not_an_if",
+    "else": "not_an_else",
+    "for": "not_a_for",
+    "while": "not_a_while",
+    "struct": "not_a_struct",
+    "type": "not_a_type",
+    "interface": "not_an_interface",
+    "import": "not_an_import",
+    "export": "not_an_export"
+  },
+  "unicode_strings": {
+    "emoji": "Hello 👋 World 🌍",
+    "chinese": "你好世界",
+    "japanese": "こんにちは世界",
+    "arabic": "مرحبا بالعالم",
+    "special_chars": "Special: @#$%^&*()[]{}|\\:;\"'<>,.?/~`"
+  },
+  "deeply_null": {
+    "level1": {
+      "level2": {
+        "level3": null
+      }
+    }
+  }
+}

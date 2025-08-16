@@ -1,0 +1,37 @@
+{
+  "numbers": [1, 2, 3, 4, 5],
+  "strings": ["apple", "banana", "cherry"],
+  "booleans": [true, false, true],
+  "mixed_primitives": [1, "hello", true, 3.14],
+  "objects": [
+    {
+      "id": 1,
+      "name": "Item 1"
+    },
+    {
+      "id": 2,
+      "name": "Item 2"
+    }
+  ],
+  "nested_arrays": [
+    [1, 2, 3],
+    [4, 5, 6],
+    [7, 8, 9]
+  ],
+  "empty_array": [],
+  "array_with_nulls": [1, null, 3, null, 5],
+  "complex_objects": [
+    {
+      "user": {
+        "id": 1,
+        "tags": ["admin", "user"]
+      },
+      "permissions": [
+        {
+          "resource": "posts",
+          "actions": ["read", "write"]
+        }
+      ]
+    }
+  ]
+}

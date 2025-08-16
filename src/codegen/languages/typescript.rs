@@ -56,7 +56,16 @@ impl TypeScriptGenerator {
             FieldType::Number => "number",
             FieldType::Boolean => "boolean",
             FieldType::Custom(name) => name,
-            FieldType::Any => "any",
+            FieldType::Any => {
+                if is_array {
+                    // For arrays with mixed types, use any as element type
+                    // Could be enhanced to use union types like (string | number | boolean)[]
+                    "any"
+                } else {
+                    // For single Any fields, use any
+                    "any"
+                }
+            }
         };
 
         let mut result = base_type.to_string();

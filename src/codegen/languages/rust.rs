@@ -4,7 +4,7 @@
 //! It generates Rust structs with appropriate serde annotations, type mappings, and
 //! follows Rust naming conventions and best practices.
 
-use crate::codegen::comments::{CommentGenerator, RustCommentGenerator};
+use crate::codegen::comments::RustCommentGenerator;
 use crate::codegen::generator::{CodeGenerator, GenerationOptions};
 use crate::codegen::types::{FieldDefinition, FieldType, StructDefinition};
 use crate::codegen::utils::{NameConverter, escape_comment_string, generate_timestamp};
@@ -60,7 +60,15 @@ impl RustGenerator {
             FieldType::Number => "f64",
             FieldType::Boolean => "bool",
             FieldType::Custom(name) => name,
-            FieldType::Any => "serde_json::Value",
+            FieldType::Any => {
+                if is_array {
+                    // For arrays with mixed types, use serde_json::Value as element type
+                    "serde_json::Value"
+                } else {
+                    // For single Any fields, use serde_json::Value
+                    "serde_json::Value"
+                }
+            }
         };
 
         let mut result = base_type.to_string();
